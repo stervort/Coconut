@@ -12,48 +12,42 @@
   const W = canvas.width;
   const H = canvas.height;
 
-  /* ----- High scores (Top 10) ----- */
-  const HS_KEY = "jvc_highscores_v1";
+  // --------------------
+  // Global leaderboard (API)
+  // --------------------
   const HS_LIMIT = 10;
 
-  function loadHighScores(){
-    try{
-      const raw = localStorage.getItem(HS_KEY);
-      const arr = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(arr)) return [];
-      return arr
-        .filter(x => x && typeof x.score === "number")
-        .map(x => ({
-          name: (typeof x.name === "string" && x.name.trim()) ? x.name.trim() : "Unknown",
-          score: Math.floor(x.score)
-        }))
-        .sort((a,b)=>b.score-a.score)
-        .slice(0, HS_LIMIT);
+  async function apiGetScores() {
+    const r = await fetch("/api/scores", { method: "GET" });
+    if (!r.ok) throw new Error("Failed to load scores");
+    const j = await r.json();
+    return Array.isArray(j.scores) ? j.scores : [];
+  }
+
+  async function apiSubmitScore(name, score, achievement) {
+    const r = await fetch("/api/scores", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, score, achievement })
+    });
+    if (!r.ok) throw new Error("Failed to submit score");
+    return await r.json();
+  }
+
+  function fmtDate(iso) {
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
     } catch {
-      return [];
+      return "";
     }
   }
 
-  function saveHighScores(list){
-    try{
-      localStorage.setItem(HS_KEY, JSON.stringify(list.slice(0, HS_LIMIT)));
-    } catch {
-      // ignore
-    }
-  }
-
-  function qualifies(score, list){
-    if (list.length < HS_LIMIT) return true;
-    const min = list[list.length - 1]?.score ?? 0;
-    return score > min;
-  }
-
-  function renderHighScores(){
-    const list = loadHighScores();
-
+  function renderHighScores(list) {
     if (!leaderboardEl) return;
 
-    if (list.length === 0){
+    if (!list || list.length === 0) {
       leaderboardEl.innerHTML = `
         <h3>Top 10</h3>
         <div style="opacity:.85">No scores yet. Be the first!</div>
@@ -61,12 +55,19 @@
       return;
     }
 
-    const items = list.map((e, i) => {
-      const safeName = (e.name || "Unknown").replace(/[<>]/g, "");
+    const items = list.slice(0, HS_LIMIT).map((e, i) => {
+      const name = (e.name || "Unknown").toString().replace(/[<>]/g, "");
+      const score = Math.floor(Number(e.score) || 0);
+      const ach = (e.achievement || "Coconut apprentice").toString().replace(/[<>]/g, "");
+      const date = fmtDate(e.created_at);
+
       return `
         <li>
-          <span class="name">${i+1}. ${safeName}</span>
-          <span class="score">${e.score}</span>
+          <div class="lb-left">
+            <div class="lb-name">${i + 1}. ${name}</div>
+            <div class="lb-meta">${ach}${date ? " • " + date : ""}</div>
+          </div>
+          <div class="lb-score">${score}</div>
         </li>
       `;
     }).join("");
@@ -77,9 +78,26 @@
     `;
   }
 
-  renderHighScores();
+  async function refreshLeaderboard() {
+    try {
+      const list = await apiGetScores();
+      renderHighScores(list);
+      return list;
+    } catch (e) {
+      console.error(e);
+      if (leaderboardEl) {
+        leaderboardEl.innerHTML = `<h3>Top 10</h3><div style="opacity:.85">Could not load leaderboard.</div>`;
+      }
+      return [];
+    }
+  }
 
-  /* ----- scene bands ----- */
+  // initial load
+  refreshLeaderboard();
+
+  // --------------------
+  // Scene / physics
+  // --------------------
   const SKY_END   = 120;
   const OCEAN_END = 190;
   const SAND_END  = 215;
@@ -89,19 +107,16 @@
 
   const GRASS_TOP = ROAD_TOP + ROAD_H;
 
-  /* ----- physics ----- */
   const groundY = ROAD_TOP + ROAD_H;
   const gravity = 2200;
 
-  const jumpVel = 700;
+  const jumpVel = 410;
   const jumpCut = 0.45;
 
-  /* ----- speed ----- */
   const baseScroll = 320;
   const speedRamp  = 0.045;
   const spawnBase  = 0.95;
 
-  /* ----- Jared frames ----- */
   const RUN_FRAMES   = 8;
   const JUMP_FRAMES  = 9;
   const SLIDE_FRAMES = 6;
@@ -109,25 +124,21 @@
   const RUN_FPS   = 12;
   const JUMP_FPS  = 14;
 
-  // slide timings
-  const SLIDE_IN_FPS   = 16;   // 0->1->2 quickly
-  const SLIDE_OUT_FPS  = 16;   // 4->5 quickly
-  const SLIDE_HOLD_MAX = 3.0;  // max seconds held low
+  const SLIDE_IN_FPS   = 16;
+  const SLIDE_OUT_FPS  = 16;
+  const SLIDE_HOLD_MAX = 3.0;
   const SLIDE_HOLD_FRAMES = [2, 3];
 
-  /* ----- dog ----- */
   const DOG_FRAMES = 6;
   const DOG_FPS    = 10;
   const DOG_SPEED  = 1.12;
 
-  /* ----- bat (sprite) ----- */
-  const BAT_FRAMES = 14; // bat_0..bat_13
+  const BAT_FRAMES = 14;
   const BAT_FPS    = 18;
-  const BAT_DRAW   = 64; // source is large; draw small
+  const BAT_DRAW   = 64;
   const BAT_HIT_W  = 36;
   const BAT_HIT_H  = 18;
 
-  /* ----- draw sizes ----- */
   const JARED_DRAW = 64;
   const DOG_DRAW   = 56;
   const DOG_Y_OFFSET = 10;
@@ -139,10 +150,8 @@
   const COCONUT_GROUND_DRAW = 32;
   const COCONUT_FALL_DRAW   = 28;
 
-  // Coconut vertical placement on the ROAD
-  // Bigger number => higher on screen (because it subtracts from groundY).
   const COCONUT_GROUND_Y_OFFSET = 20;
-  const COCONUT_LAND_Y_OFFSET   = 22; // slightly different (small change from ground)
+  const COCONUT_LAND_Y_OFFSET   = 22;
 
   const sprites = {
     run:[], jump:[], slide:[], dog:[], bat:[],
@@ -185,7 +194,9 @@
     else statusEl.textContent = "Ready";
   }
 
-  /* ---------- state ---------- */
+  // --------------------
+  // Game state
+  // --------------------
   let running=false, gameOver=false;
   let time=0, tPrev=performance.now();
   let score=0, scrollMul=1;
@@ -199,10 +210,9 @@
     h:44,
     onGround:true,
 
-    // slide control
     slideHeld:false,
-    slideQueued:false,   // <-- NEW: queue slide when pressed in air
-    slideState:"none",   // "none" | "in" | "hold" | "out"
+    slideQueued:false,   // <-- queue slide if pressed mid-air
+    slideState:"none",
     slideFrame:0,
     slideAccum:0,
     slideHoldT:0
@@ -215,17 +225,26 @@
 
   const trees=[{x:650},{x:980},{x:1310},{x:1700}];
 
-  /* ---------- slide hitbox heights ---------- */
   function slideHeight(frame){
     const full = player.h;
     const low  = 18;
-
     if (frame===0 || frame===5) return full;
     if (frame===1 || frame===4) return (full + low) / 2;
     return low;
   }
 
-  /* ---------- input ---------- */
+  function achievementForScore(s) {
+    if (s >= 1800) return "Jared, destroyer of coconuts 👑";
+    if (s >= 1300) return "Samoa sprint legend ⚡";
+    if (s >= 900)  return "Bat dodger 🦇";
+    if (s >= 500)  return "Coconut dodger 🥥";
+    if (s >= 200)  return "Tree trainee 🌴";
+    return "Coconut apprentice";
+  }
+
+  // --------------------
+  // Input
+  // --------------------
   function start(){
     if(!sprites.ready) return;
     if(!running && !gameOver){
@@ -249,7 +268,6 @@
   }
 
   function startSlideNow(){
-    // Start slide sequence immediately (only when on ground)
     if (player.slideState === "none") {
       player.slideState = "in";
       player.slideFrame = 0;
@@ -264,7 +282,7 @@
 
     player.slideHeld = true;
 
-    // NEW: if in air, queue it to start on landing
+    // If in air, queue it so it starts immediately on landing
     if (!player.onGround) {
       player.slideQueued = true;
       return;
@@ -276,7 +294,7 @@
   function releaseSlide(){
     player.slideHeld = false;
 
-    // if we were only queued (still airborne), cancel the queued slide
+    // If still airborne and not sliding yet, cancel queue
     if (!player.onGround && player.slideState === "none") {
       player.slideQueued = false;
       return;
@@ -312,7 +330,9 @@
 
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-  /* ---------- helpers ---------- */
+  // --------------------
+  // Spawning
+  // --------------------
   function rand(a,b){ return Math.random()*(b-a)+a; }
 
   function spawnGroundCoco(){
@@ -349,7 +369,9 @@
     } else spawnGroundCoco();
   }
 
-  /* ---------- collision ---------- */
+  // --------------------
+  // Collision
+  // --------------------
   function playerRect(){
     let h = player.h;
     if (player.slideState !== "none") h = slideHeight(player.slideFrame);
@@ -380,7 +402,9 @@
     return false;
   }
 
-  /* ---------- slide state machine ---------- */
+  // --------------------
+  // Slide state machine
+  // --------------------
   function updateSlide(dt){
     if (player.slideState === "none") return;
 
@@ -432,39 +456,45 @@
         player.slideAccum = 0;
         player.slideHoldT = 0;
 
-        // if the player is STILL holding down, instantly start sliding again
-        // (feels responsive)
-        if (player.slideHeld && player.onGround) {
-          startSlideNow();
-        }
+        // If still holding down, start sliding again immediately
+        if (player.slideHeld && player.onGround) startSlideNow();
       }
-      return;
     }
   }
 
-  function handleGameOver(){
+  // --------------------
+  // Game over -> submit score if Top 10
+  // --------------------
+  async function handleGameOver(){
     if (gameOverHandled) return;
     gameOverHandled = true;
 
     const finalScore = Math.floor(score);
-    const list = loadHighScores();
+    const ach = achievementForScore(finalScore);
 
-    if (qualifies(finalScore, list)){
-      let name = window.prompt("New High Score! Enter your name:", "");
-      if (!name || !name.trim()) name = "Unknown";
-      name = name.trim().slice(0, 18);
+    // Load current top 10 to decide whether to prompt for name
+    const list = await refreshLeaderboard();
+    const min = (list.length >= HS_LIMIT) ? Math.floor(Number(list[list.length - 1]?.score || 0)) : -1;
+    const qualifies = (list.length < HS_LIMIT) || (finalScore > min);
 
-      const next = [...list, { name, score: finalScore }]
-        .sort((a,b)=>b.score-a.score)
-        .slice(0, HS_LIMIT);
+    if (!qualifies) return;
 
-      saveHighScores(next);
+    let name = window.prompt("New High Score! Enter your name:", "");
+    if (!name || !name.trim()) name = "Unknown";
+    name = name.trim().slice(0, 18);
+
+    try {
+      const res = await apiSubmitScore(name, finalScore, ach);
+      if (res && Array.isArray(res.scores)) renderHighScores(res.scores);
+      else await refreshLeaderboard();
+    } catch (e) {
+      console.error(e);
     }
-
-    renderHighScores();
   }
 
-  /* ---------- update ---------- */
+  // --------------------
+  // Update loop
+  // --------------------
   function update(dt){
     time += dt;
 
@@ -478,9 +508,9 @@
 
     updateSlide(dt);
 
-    // physics
     const wasInAir = !player.onGround;
 
+    // physics
     player.vy += gravity * dt;
     player.y += player.vy * dt;
 
@@ -489,7 +519,7 @@
       player.vy = 0;
       player.onGround = true;
 
-      // NEW: landed this frame; if slide was queued or key held, begin slide instantly
+      // queued slide triggers instantly on landing
       if (wasInAir && player.slideState === "none" && (player.slideQueued || player.slideHeld)) {
         player.slideQueued = false;
         startSlideNow();
@@ -559,17 +589,14 @@
     scoreEl.textContent = Math.floor(score);
     speedEl.textContent = scrollMul.toFixed(1) + "x";
 
+    // taunt
     const s = Math.floor(score);
-    let taunt = "Coconut apprentice";
-    if (s >= 200)  taunt = "Tree trainee 🌴";
-    if (s >= 500)  taunt = "Coconut dodger 🥥";
-    if (s >= 900)  taunt = "Bat dodger 🦇";
-    if (s >= 1300) taunt = "Samoa sprint legend ⚡";
-    if (s >= 1800) taunt = "Jared, destroyer of coconuts 👑";
-    tauntEl.textContent = taunt;
+    tauntEl.textContent = achievementForScore(s);
   }
 
-  /* ---------- drawing ---------- */
+  // --------------------
+  // Drawing
+  // --------------------
   function drawBackground(){
     // Sky
     const g = ctx.createLinearGradient(0,0,0,SKY_END);
@@ -599,14 +626,13 @@
     }
     ctx.imageSmoothingEnabled = old;
 
-    // Sand (beach)
+    // Sand
     ctx.fillStyle = "#f0d79a";
     ctx.fillRect(0, OCEAN_END, W, SAND_END - OCEAN_END);
 
     // Road
     ctx.fillStyle = "#2b2b2b";
     ctx.fillRect(0, ROAD_TOP, W, ROAD_H);
-
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     for (let x = 0; x < W; x += 40) {
       ctx.fillRect(x + 10, ROAD_TOP + ROAD_H/2 - 1, 18, 2);
@@ -667,13 +693,7 @@
     const img = sprites.coconut;
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(
-        img,
-        o.x - COCONUT_FALL_DRAW/2,
-        o.y - COCONUT_FALL_DRAW/2,
-        COCONUT_FALL_DRAW,
-        COCONUT_FALL_DRAW
-      );
+      ctx.drawImage(img, o.x - COCONUT_FALL_DRAW/2, o.y - COCONUT_FALL_DRAW/2, COCONUT_FALL_DRAW, COCONUT_FALL_DRAW);
       ctx.imageSmoothingEnabled = true;
     } else {
       ctx.fillStyle="#6b3b1c";
@@ -690,7 +710,6 @@
       ctx.fillRect(o.x, o.y - o.hitH, o.hitW, o.hitH);
       return;
     }
-
     ctx.imageSmoothingEnabled = false;
     const dx = o.x - (BAT_DRAW - o.hitW)/2;
     const dy = (o.y - o.hitH) - (BAT_DRAW - o.hitH)/2;
@@ -701,7 +720,6 @@
   function draw(){
     ctx.clearRect(0,0,W,H);
     drawBackground();
-
     for (const t of trees) treeDraw(t.x);
 
     drawPlayer();
