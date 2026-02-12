@@ -52,12 +52,12 @@
   const DOG_FPS    = 10;
   const DOG_SPEED  = 1.12;
 
-  /* ----- bat (NEW animated sprite) ----- */
+  /* ----- bat (sprite) ----- */
   const BAT_FRAMES = 14; // bat_0..bat_13
-  const BAT_FPS    = 18; // animation speed
-  const BAT_DRAW   = 64; // how big it appears on canvas (your frames are 500x500)
-  const BAT_HIT_W  = 36; // collision width
-  const BAT_HIT_H  = 18; // collision height
+  const BAT_FPS    = 18;
+  const BAT_DRAW   = 64; // drawn size (source is 500x500)
+  const BAT_HIT_W  = 36;
+  const BAT_HIT_H  = 18;
 
   /* ----- draw sizes ----- */
   const JARED_DRAW = 64;
@@ -70,10 +70,13 @@
   const TREE_DRAW  = 200;
   const TREE_PATH  = "assets/shrubbery/coconut_tree_1.png";
 
-  // Coconut sprite (64x64 pixel art)
   const COCONUT_PATH = "assets/shrubbery/coconut_1.png";
   const COCONUT_GROUND_DRAW = 32;
   const COCONUT_FALL_DRAW   = 28;
+
+  // Coconut vertical placement on the ROAD (bigger = higher because it subtracts from groundY)
+  const COCONUT_GROUND_Y_OFFSET = 20; // ground coconuts sit at groundY - 20
+  const COCONUT_LAND_Y_OFFSET   = 22; // falling coconuts land slightly different than ground ones
 
   const sprites = {
     run:[], jump:[], slide:[], dog:[], bat:[],
@@ -101,15 +104,18 @@
     return i;
   }
 
-  // load sprites
+  // load jared
   for (let i=0;i<RUN_FRAMES;i++)   sprites.run.push(load(`assets/jared/run_${i}.png`));
   for (let i=0;i<JUMP_FRAMES;i++)  sprites.jump.push(load(`assets/jared/jump_${i}.png`));
   for (let i=0;i<SLIDE_FRAMES;i++) sprites.slide.push(load(`assets/jared/runslide_${i}.png`));
+
+  // load dog
   for (let i=0;i<DOG_FRAMES;i++)   sprites.dog.push(load(`assets/dog/dog_${i}.png`));
 
-  // bat frames
+  // load bat frames
   for (let i=0;i<BAT_FRAMES;i++)   sprites.bat.push(load(`assets/bat/bat_${i}.png`));
 
+  // load tree + coconut
   sprites.tree = load(TREE_PATH);
   sprites.coconut = load(COCONUT_PATH);
 
@@ -230,15 +236,14 @@
   function rand(a,b){ return Math.random()*(b-a)+a; }
 
   function spawnGroundCoco(){
-    obs.push({type:"ground", x:W+40, y:groundY-30, w:26, h:22});
+    obs.push({type:"ground", x:W+40, y:groundY-COCONUT_GROUND_Y_OFFSET, w:26, h:22});
   }
 
   function spawnBat(){
-    // y here is the "feet" line for hitbox top calculation below
     obs.push({
       type:"bat",
       x:W+60,
-      y:rand(135, 195),   // flight band
+      y:rand(135, 195),
       hitW: BAT_HIT_W,
       hitH: BAT_HIT_H,
       animT: 0,
@@ -283,7 +288,6 @@
         if (overlap(pr, {x:o.x,y:o.y,w:o.w,h:o.h})) return true;
       }
       if (o.type==="bat") {
-        // bat hitbox anchored at (o.x, o.y - hitH)
         if (overlap(pr, {x:o.x, y:o.y - o.hitH, w:o.hitW, h:o.hitH})) return true;
       }
       if (o.type==="fall") {
@@ -402,15 +406,17 @@
         o.x -= scroll * 1.20 * dt;
         o.animT += dt;
         o.wiggleT += dt * 6.5;
-        o.y += Math.sin(o.wiggleT) * 10 * dt; // gentle flutter
+        o.y += Math.sin(o.wiggleT) * 10 * dt;
       }
 
       if (o.type === "fall") {
         o.x -= scroll * dt;
         o.y += o.vy * dt;
-        if (o.y >= groundY - 30) {
+
+        const landY = groundY - COCONUT_LAND_Y_OFFSET;
+        if (o.y >= landY) {
           o.type = "ground";
-          o.y = groundY - 6;
+          o.y = landY;
           o.w = 26;
           o.h = 22;
         }
@@ -534,7 +540,7 @@
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.imageSmoothingEnabled = false;
       const x = o.x - 2;
-      const y = o.y - (COCONUT_GROUND_DRAW - o.h) + 0;
+      const y = o.y - (COCONUT_GROUND_DRAW - o.h);
       ctx.drawImage(img, x, y, COCONUT_GROUND_DRAW, COCONUT_GROUND_DRAW);
       ctx.imageSmoothingEnabled = true;
     } else {
@@ -547,7 +553,13 @@
     const img = sprites.coconut;
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, o.x - COCONUT_FALL_DRAW/2, o.y - COCONUT_FALL_DRAW/2, COCONUT_FALL_DRAW, COCONUT_FALL_DRAW);
+      ctx.drawImage(
+        img,
+        o.x - COCONUT_FALL_DRAW/2,
+        o.y - COCONUT_FALL_DRAW/2,
+        COCONUT_FALL_DRAW,
+        COCONUT_FALL_DRAW
+      );
       ctx.imageSmoothingEnabled = true;
     } else {
       ctx.fillStyle="#6b3b1c";
@@ -560,17 +572,13 @@
   function drawBat(o){
     const img = sprites.bat[Math.floor(o.animT * BAT_FPS) % BAT_FRAMES];
     if (!img || !img.complete || img.naturalWidth === 0) {
-      // fallback
       ctx.fillStyle = "#222";
       ctx.fillRect(o.x, o.y - o.hitH, o.hitW, o.hitH);
       return;
     }
 
-    // Keep pixel crisp even though source is huge
     ctx.imageSmoothingEnabled = false;
 
-    // Align sprite to hitbox:
-    // o.x,o.y refers to hitbox bottom-left (we use y-hitH as top)
     const dx = o.x - (BAT_DRAW - o.hitW)/2;
     const dy = (o.y - o.hitH) - (BAT_DRAW - o.hitH)/2;
 
