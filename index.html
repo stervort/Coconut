@@ -13,9 +13,24 @@
     .hud { width:min(900px, 96vw); display:flex; justify-content:space-between; font-size:14px; opacity:.9; }
     .help { width:min(900px, 96vw); font-size:13px; opacity:.75; line-height:1.35; }
     kbd { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18); padding:2px 6px; border-radius:6px; }
+
+    /* Keep GIFs “alive” but offscreen */
+    .sprite-preload {
+      position: absolute;
+      left: -10000px;
+      top: -10000px;
+      width: 56px;
+      height: 56px;
+      opacity: 0.01; /* not display:none */
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
+  <!-- Hidden DOM images so GIF animation advances -->
+  <img id="jaredRun"  class="sprite-preload" src="assets/JaredRunning.gif" alt="Jared Running" />
+  <img id="jaredJump" class="sprite-preload" src="assets/JaredJumping.gif" alt="Jared Jumping" />
+
   <div class="wrap">
     <div class="hud">
       <div id="status">Loading…</div>
