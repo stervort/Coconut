@@ -408,7 +408,7 @@
       if (o.type === "fall") {
         o.x -= scroll * dt;
         o.y += o.vy * dt;
-        if (o.y >= groundY - 6) {
+        if (o.y >= groundY - 30) {
           o.type = "ground";
           o.y = groundY - 6;
           o.w = 26;
