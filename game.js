@@ -6,38 +6,33 @@
   const speedEl = document.getElementById("speed");
   const tauntEl = document.getElementById("taunt");
 
+  // Grab DOM <img> tags (animated GIFs will advance frames)
+  const jaredRunImg = document.getElementById("jaredRun");
+  const jaredJumpImg = document.getElementById("jaredJump");
+
   // --- Game constants
   const W = canvas.width, H = canvas.height;
-  const groundY = 245;          // baseline for feet
-  const gravity = 2200;         // px/s^2
-  const jumpVel = 820;          // px/s
-  const baseScroll = 320;       // px/s
-  const speedRamp = 0.045;      // per second
-  const spawnBase = 0.95;       // seconds (shrinks with speed)
+  const groundY = 245;
+  const gravity = 2200;
+  const jumpVel = 820;
+  const baseScroll = 320;
+  const speedRamp = 0.045;
+  const spawnBase = 0.95;
 
-  // --- Assets (your GIFs)
-  const assets = {
-    run: new Image(),
-    jump: new Image(),
-    loaded: 0,
-    total: 2
-  };
-
-  function assetLoaded() {
-    assets.loaded++;
-    if (assets.loaded >= assets.total) {
-      statusEl.textContent = "Ready";
-    } else {
-      statusEl.textContent = `Loading… (${assets.loaded}/${assets.total})`;
-    }
+  // --- Asset readiness
+  let spritesReady = false;
+  function checkSpritesReady() {
+    // complete + naturalWidth is the reliable check
+    const okRun  = jaredRunImg.complete  && jaredRunImg.naturalWidth > 0;
+    const okJump = jaredJumpImg.complete && jaredJumpImg.naturalWidth > 0;
+    spritesReady = okRun && okJump;
+    statusEl.textContent = spritesReady ? "Ready" : "Loading… (check assets names/path)";
   }
-
-  assets.run.onload = assetLoaded;
-  assets.jump.onload = assetLoaded;
-
-  // IMPORTANT: names you gave
-  assets.run.src = "assets/JaredRunning.gif";
-  assets.jump.src = "assets/JaredJumping.gif";
+  jaredRunImg.addEventListener("load", checkSpritesReady);
+  jaredJumpImg.addEventListener("load", checkSpritesReady);
+  jaredRunImg.addEventListener("error", () => { statusEl.textContent = "Missing JaredRunning.gif (check case/path)"; });
+  jaredJumpImg.addEventListener("error", () => { statusEl.textContent = "Missing JaredJumping.gif (check case/path)"; });
+  checkSpritesReady();
 
   // --- State
   let running = false;
@@ -47,7 +42,6 @@
   let score = 0;
   let scrollMul = 1;
 
-  // Player
   const player = {
     x: 120,
     y: groundY,
@@ -58,11 +52,10 @@
     duck: false,
   };
 
-  // Obstacles
   const obs = [];
   let spawnTimer = 0;
 
-  // Decorative trees (still drawn as shapes for now)
+  // Trees still shapes for now
   const trees = [{ x: 650 }, { x: 980 }, { x: 1310 }, { x: 1700 }];
 
   function reset() {
@@ -84,8 +77,7 @@
     trees[2].x = 1310;
     trees[3].x = 1700;
 
-    // if not loaded yet, keep loading status
-    if (assets.loaded >= assets.total) statusEl.textContent = "Ready";
+    checkSpritesReady();
     scoreEl.textContent = "0";
     speedEl.textContent = "1.0x";
     tauntEl.textContent = "Coconut apprentice";
@@ -94,7 +86,7 @@
 
   // --- Input
   function startIfNeeded() {
-    if (assets.loaded < assets.total) return; // don't start until sprites loaded
+    if (!spritesReady) return;
     if (!running && !gameOver) {
       running = true;
       statusEl.textContent = "Go!";
@@ -103,7 +95,7 @@
 
   function jump() {
     startIfNeeded();
-    if (gameOver || assets.loaded < assets.total) return;
+    if (gameOver || !spritesReady) return;
     if (player.onGround) {
       player.vy = -jumpVel;
       player.onGround = false;
@@ -112,7 +104,7 @@
 
   function setDuck(v) {
     startIfNeeded();
-    if (gameOver || assets.loaded < assets.total) return;
+    if (gameOver || !spritesReady) return;
     player.duck = v;
   }
 
@@ -190,7 +182,6 @@
   }
 
   function playerRect() {
-    // Keep collision box stable; GIF is 56x56 but we scale it.
     const duckH = player.duck ? 26 : player.h;
     return { x: player.x, y: player.y - duckH, w: player.w, h: duckH };
   }
@@ -224,7 +215,6 @@
     scoreEl.textContent = s.toString();
     speedEl.textContent = `${scrollMul.toFixed(1)}x`;
 
-    // taunts
     let taunt = "Coconut apprentice";
     if (s >= 200)  taunt = "Tree trainee 🌴";
     if (s >= 500)  taunt = "Coconut dodger 🥥";
@@ -295,17 +285,16 @@
     }
   }
 
-  // --- Drawing helpers
+  // --- Draw helpers
   function drawTreeShape(x) {
-    // trunk
     ctx.fillStyle = "rgba(90,60,30,.7)";
     ctx.fillRect(x - 6, 90, 12, 170);
-    // canopy
+
     ctx.fillStyle = "rgba(20,120,60,.7)";
     ctx.beginPath();
     ctx.ellipse(x, 85, 45, 28, 0, 0, Math.PI * 2);
     ctx.fill();
-    // coconuts
+
     ctx.fillStyle = "rgba(120,70,35,.7)";
     for (let i = 0; i < 3; i++) {
       ctx.beginPath();
@@ -315,18 +304,16 @@
   }
 
   function drawPlayerSprite() {
-    // choose sprite based on air/ground
-    const img = player.onGround ? assets.run : assets.jump;
+    const img = player.onGround ? jaredRunImg : jaredJumpImg;
 
-    // your gifs are 56x56; scale them up a bit so they feel game-sized
+    // draw at a slightly bigger size than 56x56
     const drawW = 64;
     const drawH = 64;
 
-    // anchor feet to groundY, so sprite doesn't sink
-    const x = player.x - 14;          // small left offset to center
-    const y = player.y - drawH + 6;   // align feet
+    // align feet to ground
+    const x = player.x - 14;
+    const y = player.y - drawH + 6;
 
-    // draw animated gif frame
     ctx.drawImage(img, x, y, drawW, drawH);
   }
 
@@ -342,7 +329,7 @@
     ctx.fillStyle = "rgba(90,60,20,.25)";
     ctx.fillRect(0, groundY + 12, W, H - (groundY + 12));
 
-    // trees (shape placeholders)
+    // trees
     for (const tr of trees) drawTreeShape(tr.x);
 
     // banner
@@ -352,17 +339,17 @@
     ctx.font = "14px system-ui";
     ctx.fillText("Jared vs Coconut", 26, 31);
 
-    // player sprite
-    if (assets.loaded >= assets.total) {
+    // player
+    if (spritesReady) {
       drawPlayerSprite();
     } else {
-      // fallback if not loaded yet
-      ctx.fillStyle = "rgba(240,240,255,.92)";
+      // fallback block so you can still see something
       const pr = playerRect();
+      ctx.fillStyle = "rgba(240,240,255,.92)";
       ctx.fillRect(pr.x, pr.y, pr.w, pr.h);
     }
 
-    // obstacles (still shapes)
+    // obstacles (shapes for now)
     for (const o of obs) {
       if (o.type === "groundCoco") {
         ctx.fillStyle = "rgba(110,65,30,.95)";
@@ -393,12 +380,14 @@
     }
 
     // overlays
-    if (assets.loaded < assets.total) {
+    if (!spritesReady) {
       ctx.fillStyle = "rgba(0,0,0,.35)";
       ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = "rgba(255,255,255,.92)";
       ctx.font = "18px system-ui";
       ctx.fillText("Loading sprites…", 360, 150);
+      ctx.font = "12px system-ui";
+      ctx.fillText("Check /assets filenames (case-sensitive).", 330, 172);
     } else if (!running && !gameOver) {
       ctx.fillStyle = "rgba(0,0,0,.35)";
       ctx.fillRect(0, 0, W, H);
@@ -423,9 +412,8 @@
     const dt = Math.min(0.033, (now - tPrev) / 1000);
     tPrev = now;
 
-    if (running && !gameOver) update(dt);
+    if (running && !gameOver && spritesReady) update(dt);
     draw();
-
     requestAnimationFrame(loop);
   }
 
