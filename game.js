@@ -221,7 +221,7 @@
   }
 
   function spawnDog(){
-    obs.push({type:"dog", x:W+60, y:groundY-15, hitW:34, hitH:22, animT:0});
+    obs.push({type:"dog", x:W+60, y:groundY, hitW:34, hitH:22, animT:0});
   }
 
   function chooseSpawn(){
@@ -487,7 +487,7 @@
     const f = Math.floor(o.animT * DOG_FPS) % DOG_FRAMES;
     const img = sprites.dog[f];
     if (!img || !img.complete || img.naturalWidth === 0) return;
-    ctx.drawImage(img, o.x - 10, groundY - DOG_DRAW + 6, DOG_DRAW, DOG_DRAW);
+    ctx.drawImage(img, o.x - 14, groundY - DOG_DRAW + 6, DOG_DRAW, DOG_DRAW);
   }
 
   function draw(){
