@@ -55,14 +55,25 @@
   /* ----- draw sizes ----- */
   const JARED_DRAW = 64;
   const DOG_DRAW   = 56;
-  const DOG_Y_OFFSET = 10; // +down, -up (applies to sprite + hitbox)
+
+  // Moves dog DOWN/UP (sprite + hitbox). Increase to move down.
+  const DOG_Y_OFFSET = 10;
+
+  // Tree + coconut sprites
   const TREE_DRAW  = 200;
+  const TREE_PATH  = "assets/shrubbery/coconut_tree_1.png";
+
+  const COCONUT_PATH = "assets/shrubbery/coconut_1.png";
+  const COCONUT_GROUND_DRAW = 28; // visual size for road coconuts
+  const COCONUT_FALL_DRAW   = 24; // visual size for falling coconuts
 
   const sprites = {
     run:[], jump:[], slide:[], dog:[],
     tree:null,
+    coconut:null,
     loaded:0,
-    total: RUN_FRAMES + JUMP_FRAMES + SLIDE_FRAMES + DOG_FRAMES + 1,
+    // +2 = tree + coconut
+    total: RUN_FRAMES + JUMP_FRAMES + SLIDE_FRAMES + DOG_FRAMES + 2,
     ready:false,
     firstError:null
   };
@@ -88,7 +99,8 @@
   for (let i=0;i<SLIDE_FRAMES;i++) sprites.slide.push(load(`assets/jared/runslide_${i}.png`));
   for (let i=0;i<DOG_FRAMES;i++)   sprites.dog.push(load(`assets/dog/dog_${i}.png`));
 
-  sprites.tree = load("assets/shrubbery/coconut_tree_1.png");
+  sprites.tree = load(TREE_PATH);
+  sprites.coconut = load(COCONUT_PATH);
 
   function updateStatus(){
     if (sprites.firstError) statusEl.textContent = "Missing: " + sprites.firstError;
@@ -207,6 +219,7 @@
   function rand(a,b){ return Math.random()*(b-a)+a; }
 
   function spawnGroundCoco(){
+    // coconut sits on road surface
     obs.push({type:"ground", x:W+40, y:groundY-6, w:26, h:22});
   }
 
@@ -381,7 +394,7 @@
       if (o.type === "dog") {
         o.x -= scroll * DOG_SPEED * dt;
         o.animT += dt;
-        o.y = groundY + DOG_Y_OFFSET; // <-- this is why changing spawn y didn't work before
+        o.y = groundY + DOG_Y_OFFSET; // keep pinned (this is why spawn changes won't stick otherwise)
       }
     }
 
@@ -401,18 +414,18 @@
 
   /* ---------- drawing ---------- */
   function drawBackground(){
-    // sky
+    // 1) Sky
     const g = ctx.createLinearGradient(0,0,0,SKY_END);
     g.addColorStop(0,"#6ad4ff");
     g.addColorStop(1,"#e9f9ff");
     ctx.fillStyle = g;
     ctx.fillRect(0,0,W,SKY_END);
 
-    // ocean
+    // 2) Ocean
     ctx.fillStyle = "#1e8cc4";
     ctx.fillRect(0, SKY_END, W, OCEAN_END - SKY_END);
 
-    // simple wave pixels
+    // tiny wave pixels
     const old = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
     const tile = 8;
@@ -429,21 +442,21 @@
     }
     ctx.imageSmoothingEnabled = old;
 
-    // sand (beach)
+    // 3) Sandy beach
     ctx.fillStyle = "#f0d79a";
     ctx.fillRect(0, OCEAN_END, W, SAND_END - OCEAN_END);
 
-    // sand (beach) already drawn above; now draw a real road (dark)
+    // 4) Road (dark)
     ctx.fillStyle = "#2b2b2b";
     ctx.fillRect(0, ROAD_TOP, W, ROAD_H);
 
-    // simple dashed center line
+    // dashed center line
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     for (let x = 0; x < W; x += 40) {
       ctx.fillRect(x + 10, ROAD_TOP + ROAD_H/2 - 1, 18, 2);
     }
 
-    // grass
+    // 5) Green grass
     ctx.fillStyle = "#2f9b57";
     ctx.fillRect(0, GRASS_TOP, W, H - GRASS_TOP);
   }
@@ -483,6 +496,46 @@
     ctx.drawImage(img, o.x - 14, o.y - DOG_DRAW + 6, DOG_DRAW, DOG_DRAW);
   }
 
+  function drawGroundCoconut(o){
+    const img = sprites.coconut;
+    if (img && img.complete && img.naturalWidth > 0) {
+      // draw small on the road; anchor near its hitbox
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        img,
+        o.x - 2,
+        o.y - (COCONUT_GROUND_DRAW - o.h),
+        COCONUT_GROUND_DRAW,
+        COCONUT_GROUND_DRAW
+      );
+      ctx.imageSmoothingEnabled = true;
+    } else {
+      // fallback
+      ctx.fillStyle = "#6b3b1c";
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+    }
+  }
+
+  function drawFallingCoconut(o){
+    const img = sprites.coconut;
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        img,
+        o.x - COCONUT_FALL_DRAW/2,
+        o.y - COCONUT_FALL_DRAW/2,
+        COCONUT_FALL_DRAW,
+        COCONUT_FALL_DRAW
+      );
+      ctx.imageSmoothingEnabled = true;
+    } else {
+      ctx.fillStyle="#6b3b1c";
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
   function draw(){
     ctx.clearRect(0,0,W,H);
     drawBackground();
@@ -493,14 +546,12 @@
 
     for (const o of obs) {
       if (o.type==="ground") {
-        ctx.fillStyle="#6b3b1c";
-        ctx.fillRect(o.x, o.y, o.w, o.h);
+        drawGroundCoconut(o);
       } else if (o.type==="bat") {
         ctx.fillStyle="#222";
         ctx.fillRect(o.x, o.y-10, 10, 10);
       } else if (o.type==="fall") {
-        ctx.fillStyle="#6b3b1c";
-        ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI*2); ctx.fill();
+        drawFallingCoconut(o);
       } else if (o.type==="dog") {
         drawDog(o);
       }
