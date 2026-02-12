@@ -9,6 +9,13 @@
   const tauntEl  = document.getElementById("taunt");
   const leaderboardEl = document.getElementById("leaderboard");
 
+  // overlay UI
+  const overlayEl = document.getElementById("nameOverlay");
+  const nameInput = document.getElementById("nameInput");
+  const submitBtn = document.getElementById("submitNameBtn");
+  const skipBtn   = document.getElementById("skipNameBtn");
+  const overlaySub = document.getElementById("nameOverlaySub");
+
   const W = canvas.width;
   const H = canvas.height;
 
@@ -94,6 +101,68 @@
 
   // initial load
   refreshLeaderboard();
+
+  // --------------------
+  // In-game name entry overlay
+  // --------------------
+  let pendingHighScore = null; // { score, achievement }
+
+  function showNameOverlay(score, achievement) {
+    pendingHighScore = { score, achievement };
+
+    if (overlaySub) {
+      overlaySub.textContent = `Score: ${score} • ${achievement}`;
+    }
+
+    overlayEl?.classList.add("show");
+    overlayEl?.setAttribute("aria-hidden", "false");
+
+    // focus input
+    if (nameInput) {
+      nameInput.value = "";
+      setTimeout(() => nameInput.focus(), 0);
+    }
+  }
+
+  function hideNameOverlay() {
+    overlayEl?.classList.remove("show");
+    overlayEl?.setAttribute("aria-hidden", "true");
+  }
+
+  async function submitNameFromOverlay(useName) {
+    if (!pendingHighScore) return;
+
+    let name = (useName ?? "").toString().trim();
+    if (!name) name = "Unknown";
+    name = name.slice(0, 18);
+
+    const { score, achievement } = pendingHighScore;
+    pendingHighScore = null;
+
+    hideNameOverlay();
+
+    try {
+      const res = await apiSubmitScore(name, score, achievement);
+      if (res && Array.isArray(res.scores)) renderHighScores(res.scores);
+      else await refreshLeaderboard();
+    } catch (e) {
+      console.error(e);
+      await refreshLeaderboard();
+    }
+  }
+
+  submitBtn?.addEventListener("click", () => submitNameFromOverlay(nameInput?.value));
+  skipBtn?.addEventListener("click", () => submitNameFromOverlay("Unknown"));
+
+  nameInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submitNameFromOverlay(nameInput.value);
+    if (e.key === "Escape") submitNameFromOverlay("Unknown");
+  });
+
+  overlayEl?.addEventListener("click", (e) => {
+    // click outside panel to skip
+    if (e.target === overlayEl) submitNameFromOverlay("Unknown");
+  });
 
   // --------------------
   // Scene / physics
@@ -211,7 +280,7 @@
     onGround:true,
 
     slideHeld:false,
-    slideQueued:false,   // <-- queue slide if pressed mid-air
+    slideQueued:false,
     slideState:"none",
     slideFrame:0,
     slideAccum:0,
@@ -282,19 +351,16 @@
 
     player.slideHeld = true;
 
-    // If in air, queue it so it starts immediately on landing
     if (!player.onGround) {
       player.slideQueued = true;
       return;
     }
-
     startSlideNow();
   }
 
   function releaseSlide(){
     player.slideHeld = false;
 
-    // If still airborne and not sliding yet, cancel queue
     if (!player.onGround && player.slideState === "none") {
       player.slideQueued = false;
       return;
@@ -308,22 +374,30 @@
   }
 
   window.addEventListener("keydown", (e) => {
+    // don't steal typing when the overlay is open
+    if (overlayEl?.classList.contains("show")) {
+      if (e.code === "ArrowDown" || e.code === "ArrowUp" || e.code === "Space") e.preventDefault();
+      return;
+    }
     if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); jump(); }
     if (e.code === "ArrowDown") { e.preventDefault(); beginSlide(); }
     if (e.code === "KeyR") reset();
   });
 
   window.addEventListener("keyup", (e) => {
+    if (overlayEl?.classList.contains("show")) return;
     if (e.code === "Space" || e.code === "ArrowUp") endJump();
     if (e.code === "ArrowDown") releaseSlide();
   });
 
   canvas.addEventListener("pointerdown", (e) => {
+    if (overlayEl?.classList.contains("show")) return;
     if (e.button === 2) beginSlide();
     else jump();
   });
 
   canvas.addEventListener("pointerup", (e) => {
+    if (overlayEl?.classList.contains("show")) return;
     if (e.button === 2) releaseSlide();
     if (e.button === 0) endJump();
   });
@@ -456,14 +530,13 @@
         player.slideAccum = 0;
         player.slideHoldT = 0;
 
-        // If still holding down, start sliding again immediately
         if (player.slideHeld && player.onGround) startSlideNow();
       }
     }
   }
 
   // --------------------
-  // Game over -> submit score if Top 10
+  // Game over -> show overlay if Top 10
   // --------------------
   async function handleGameOver(){
     if (gameOverHandled) return;
@@ -472,24 +545,13 @@
     const finalScore = Math.floor(score);
     const ach = achievementForScore(finalScore);
 
-    // Load current top 10 to decide whether to prompt for name
     const list = await refreshLeaderboard();
     const min = (list.length >= HS_LIMIT) ? Math.floor(Number(list[list.length - 1]?.score || 0)) : -1;
     const qualifies = (list.length < HS_LIMIT) || (finalScore > min);
 
     if (!qualifies) return;
 
-    let name = window.prompt("New High Score! Enter your name:", "");
-    if (!name || !name.trim()) name = "Unknown";
-    name = name.trim().slice(0, 18);
-
-    try {
-      const res = await apiSubmitScore(name, finalScore, ach);
-      if (res && Array.isArray(res.scores)) renderHighScores(res.scores);
-      else await refreshLeaderboard();
-    } catch (e) {
-      console.error(e);
-    }
+    showNameOverlay(finalScore, ach);
   }
 
   // --------------------
@@ -499,7 +561,7 @@
     time += dt;
 
     scrollMul = 1 + time * speedRamp;
-    const scroll = baseScroll * scrollMul;
+    const scroll = 320 * scrollMul;
 
     score += dt * 10 * scrollMul;
 
@@ -510,7 +572,6 @@
 
     const wasInAir = !player.onGround;
 
-    // physics
     player.vy += gravity * dt;
     player.y += player.vy * dt;
 
@@ -519,7 +580,6 @@
       player.vy = 0;
       player.onGround = true;
 
-      // queued slide triggers instantly on landing
       if (wasInAir && player.slideState === "none" && (player.slideQueued || player.slideHeld)) {
         player.slideQueued = false;
         startSlideNow();
@@ -532,18 +592,18 @@
     for (const t of trees) t.x -= scroll * dt;
     const maxX = Math.max(...trees.map(t => t.x));
     for (const t of trees) {
-      if (t.x < -TREE_DRAW) t.x = maxX + rand(260, 420);
+      if (t.x < -200) t.x = maxX + rand(260, 420);
     }
 
     // spawning
     spawnTimer -= dt;
-    const every = Math.max(0.38, spawnBase / Math.sqrt(scrollMul));
+    const every = Math.max(0.38, 0.95 / Math.sqrt(scrollMul));
     if (spawnTimer <= 0) {
       chooseSpawn();
       spawnTimer = every;
     }
 
-    // obstacles move
+    // obstacles
     for (const o of obs) {
       if (o.type === "ground") o.x -= scroll * dt;
 
@@ -568,13 +628,12 @@
       }
 
       if (o.type === "dog") {
-        o.x -= scroll * DOG_SPEED * dt;
+        o.x -= scroll * 1.12 * dt;
         o.animT += dt;
         o.y = groundY + DOG_Y_OFFSET;
       }
     }
 
-    // cleanup
     for (let i = obs.length - 1; i >= 0; i--) {
       if (obs[i].x < -200) obs.splice(i, 1);
     }
@@ -588,28 +647,24 @@
 
     scoreEl.textContent = Math.floor(score);
     speedEl.textContent = scrollMul.toFixed(1) + "x";
-
-    // taunt
-    const s = Math.floor(score);
-    tauntEl.textContent = achievementForScore(s);
+    tauntEl.textContent = achievementForScore(Math.floor(score));
   }
 
   // --------------------
   // Drawing
   // --------------------
   function drawBackground(){
-    // Sky
+    const SKY_END = 120, OCEAN_END = 190, SAND_END = 215, ROAD_TOP = 215, ROAD_H = 20, GRASS_TOP = ROAD_TOP + ROAD_H;
+
     const g = ctx.createLinearGradient(0,0,0,SKY_END);
     g.addColorStop(0,"#6ad4ff");
     g.addColorStop(1,"#e9f9ff");
     ctx.fillStyle = g;
     ctx.fillRect(0,0,W,SKY_END);
 
-    // Ocean
     ctx.fillStyle = "#1e8cc4";
     ctx.fillRect(0, SKY_END, W, OCEAN_END - SKY_END);
 
-    // wave pixels
     const old = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
     const tile = 8;
@@ -626,53 +681,46 @@
     }
     ctx.imageSmoothingEnabled = old;
 
-    // Sand
     ctx.fillStyle = "#f0d79a";
     ctx.fillRect(0, OCEAN_END, W, SAND_END - OCEAN_END);
 
-    // Road
     ctx.fillStyle = "#2b2b2b";
     ctx.fillRect(0, ROAD_TOP, W, ROAD_H);
     ctx.fillStyle = "rgba(255,255,255,0.35)";
-    for (let x = 0; x < W; x += 40) {
-      ctx.fillRect(x + 10, ROAD_TOP + ROAD_H/2 - 1, 18, 2);
-    }
+    for (let x = 0; x < W; x += 40) ctx.fillRect(x + 10, ROAD_TOP + ROAD_H/2 - 1, 18, 2);
 
-    // Grass
     ctx.fillStyle = "#2f9b57";
     ctx.fillRect(0, GRASS_TOP, W, H - GRASS_TOP);
   }
 
   function treeDraw(x){
     const img = sprites.tree;
-    const y = ROAD_TOP - TREE_DRAW + 4;
+    const y = 215 - 200 + 4;
     ctx.imageSmoothingEnabled = false;
-    if (img && img.complete && img.naturalWidth > 0) {
-      ctx.drawImage(img, x - TREE_DRAW/2, y, TREE_DRAW, TREE_DRAW);
-    }
+    if (img && img.complete && img.naturalWidth > 0) ctx.drawImage(img, x - 100, y, 200, 200);
     ctx.imageSmoothingEnabled = true;
   }
 
   function jaredFrame(){
     if (player.slideState !== "none") return sprites.slide[player.slideFrame] || sprites.run[0];
     if (!player.onGround) {
-      const idx = Math.min(JUMP_FRAMES - 1, Math.floor(jumpT * JUMP_FPS));
+      const idx = Math.min(8, Math.floor(jumpT * 14));
       return sprites.jump[idx] || sprites.run[0];
     }
-    return sprites.run[Math.floor(runT * RUN_FPS) % RUN_FRAMES] || sprites.run[0];
+    return sprites.run[Math.floor(runT * 12) % 8] || sprites.run[0];
   }
 
   function drawPlayer(){
     const img = jaredFrame();
     if (!img || !img.complete || img.naturalWidth === 0) return;
-    ctx.drawImage(img, player.x - 14, player.y - JARED_DRAW + 6, JARED_DRAW, JARED_DRAW);
+    ctx.drawImage(img, player.x - 14, player.y - 64 + 6, 64, 64);
   }
 
   function drawDog(o){
-    const f = Math.floor(o.animT * DOG_FPS) % DOG_FRAMES;
+    const f = Math.floor(o.animT * 10) % 6;
     const img = sprites.dog[f];
     if (!img || !img.complete || img.naturalWidth === 0) return;
-    ctx.drawImage(img, o.x - 14, o.y - DOG_DRAW + 6, DOG_DRAW, DOG_DRAW);
+    ctx.drawImage(img, o.x - 14, o.y - 56 + 6, 56, 56);
   }
 
   function drawGroundCoconut(o){
@@ -680,8 +728,8 @@
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.imageSmoothingEnabled = false;
       const x = o.x - 2;
-      const y = o.y - (COCONUT_GROUND_DRAW - o.h);
-      ctx.drawImage(img, x, y, COCONUT_GROUND_DRAW, COCONUT_GROUND_DRAW);
+      const y = o.y - (32 - o.h);
+      ctx.drawImage(img, x, y, 32, 32);
       ctx.imageSmoothingEnabled = true;
     } else {
       ctx.fillStyle = "#6b3b1c";
@@ -693,7 +741,7 @@
     const img = sprites.coconut;
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img, o.x - COCONUT_FALL_DRAW/2, o.y - COCONUT_FALL_DRAW/2, COCONUT_FALL_DRAW, COCONUT_FALL_DRAW);
+      ctx.drawImage(img, o.x - 14, o.y - 14, 28, 28);
       ctx.imageSmoothingEnabled = true;
     } else {
       ctx.fillStyle="#6b3b1c";
@@ -704,16 +752,16 @@
   }
 
   function drawBat(o){
-    const img = sprites.bat[Math.floor(o.animT * BAT_FPS) % BAT_FRAMES];
+    const img = sprites.bat[Math.floor(o.animT * 18) % 14];
     if (!img || !img.complete || img.naturalWidth === 0) {
       ctx.fillStyle = "#222";
       ctx.fillRect(o.x, o.y - o.hitH, o.hitW, o.hitH);
       return;
     }
     ctx.imageSmoothingEnabled = false;
-    const dx = o.x - (BAT_DRAW - o.hitW)/2;
-    const dy = (o.y - o.hitH) - (BAT_DRAW - o.hitH)/2;
-    ctx.drawImage(img, dx, dy, BAT_DRAW, BAT_DRAW);
+    const dx = o.x - (64 - o.hitW)/2;
+    const dy = (o.y - o.hitH) - (64 - o.hitH)/2;
+    ctx.drawImage(img, dx, dy, 64, 64);
     ctx.imageSmoothingEnabled = true;
   }
 
@@ -754,7 +802,6 @@
     gameOverHandled=false;
 
     player.y=groundY; player.vy=0; player.onGround=true;
-
     player.slideHeld=false;
     player.slideQueued=false;
     player.slideState="none";
