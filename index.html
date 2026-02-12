@@ -2,15 +2,81 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Jared vs Coconut</title>
+<title>Jared Vs. Coconut</title>
 <style>
-html,body{margin:0;background:#0b1320;color:#fff;font-family:sans-serif}
-.wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:8px}
-canvas{border:2px solid rgba(255,255,255,.2);border-radius:8px}
-.hud{width:900px;display:flex;justify-content:space-between}
+  html,body{margin:0;background:#0b1320;color:#fff;font-family:sans-serif}
+  .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:8px}
+  canvas{border:2px solid rgba(255,255,255,.2);border-radius:8px}
+
+  .title{
+    position:fixed;
+    top:10px;
+    left:50%;
+    transform:translateX(-50%);
+    margin:0;
+    font-size:24px;
+    letter-spacing:0.5px;
+    text-shadow:0 2px 0 rgba(0,0,0,.35);
+    z-index:10;
+  }
+
+  .hud{width:900px;display:flex;justify-content:space-between}
+
+  .footer{
+    width:900px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    align-items:center;
+  }
+
+  #leaderboard{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:10px;
+    background:rgba(255,255,255,.04);
+    font-size:14px;
+  }
+  #leaderboard h3{
+    margin:0 0 6px 0;
+    font-size:14px;
+    font-weight:700;
+    opacity:.95;
+  }
+  #leaderboard ol{
+    margin:0;
+    padding-left:22px;
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:4px 16px;
+  }
+  #leaderboard li{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  #leaderboard .name{
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  #leaderboard .score{
+    opacity:.9;
+    font-variant-numeric: tabular-nums;
+  }
+  @media (max-width: 940px){
+    .hud,.footer,#leaderboard{width:min(900px, 94vw)}
+    #leaderboard ol{grid-template-columns:1fr}
+  }
 </style>
 </head>
 <body>
+
+<h1 class="title">Jared Vs. Coconut</h1>
+
 <div class="wrap">
   <div class="hud">
     <div id="status">Loading…</div>
@@ -23,7 +89,10 @@ canvas{border:2px solid rgba(255,255,255,.2);border-radius:8px}
 
   <canvas id="c" width="900" height="300"></canvas>
 
-  <div>Jump: Space / ↑ / click • Slide: ↓ / right-click (max 3s) • R = restart</div>
+  <div class="footer">
+    <div>Jump: Space / ↑ / click • Slide: ↓ / right-click (max 3s) • R = restart</div>
+    <div id="leaderboard"></div>
+  </div>
 </div>
 
 <script src="game.js"></script>
