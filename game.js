@@ -44,8 +44,8 @@
   // slide timings
   const SLIDE_IN_FPS   = 16;   // 0->1->2 quickly
   const SLIDE_OUT_FPS  = 16;   // 4->5 quickly
-  const SLIDE_HOLD_MAX = 3.0;  // max seconds held low (realism)
-  const SLIDE_HOLD_FRAMES = [2, 3]; // alternate these while holding low
+  const SLIDE_HOLD_MAX = 3.0;  // max seconds held low
+  const SLIDE_HOLD_FRAMES = [2, 3]; // alternate while holding
 
   /* ----- dog ----- */
   const DOG_FRAMES = 6;
@@ -55,9 +55,9 @@
   /* ----- draw sizes ----- */
   const JARED_DRAW = 64;
   const DOG_DRAW   = 56;
+  const DOG_Y_OFFSET = 10; // +down, -up (applies to sprite + hitbox)
   const TREE_DRAW  = 200;
 
-  /* ----- assets ----- */
   const sprites = {
     run:[], jump:[], slide:[], dog:[],
     tree:null,
@@ -110,11 +110,11 @@
     onGround:true,
 
     // slide control
-    slideHeld:false,      // is key/mouse held right now?
+    slideHeld:false,
     slideState:"none",    // "none" | "in" | "hold" | "out"
-    slideFrame:0,         // 0..5
-    slideAccum:0,         // accum for frame stepping
-    slideHoldT:0          // seconds spent in hold state
+    slideFrame:0,
+    slideAccum:0,
+    slideHoldT:0
   };
 
   let runT=0, jumpT=0;
@@ -146,7 +146,7 @@
   function jump(){
     start();
     if (gameOver || !player.onGround) return;
-    if (player.slideState !== "none") return; // no jumping during slide
+    if (player.slideState !== "none") return;
 
     player.vy = -jumpVel;
     player.onGround = false;
@@ -160,7 +160,8 @@
   function beginSlide(){
     start();
     if (gameOver) return;
-    if (!player.onGround) return; // only slide on ground
+    if (!player.onGround) return;
+
     if (player.slideState === "none") {
       player.slideState = "in";
       player.slideFrame = 0;
@@ -172,10 +173,8 @@
 
   function releaseSlide(){
     player.slideHeld = false;
-    // if we're holding or sliding in, start sliding out
     if (player.slideState === "hold" || player.slideState === "in") {
       player.slideState = "out";
-      // jump to frame 4 so it visibly comes back up
       player.slideFrame = Math.max(player.slideFrame, 4);
       player.slideAccum = 0;
     }
@@ -192,17 +191,16 @@
     if (e.code === "ArrowDown") releaseSlide();
   });
 
-  // pointer: left click jump, right click slide
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button === 2) beginSlide();
     else jump();
   });
+
   canvas.addEventListener("pointerup", (e) => {
-    // releasing right click ends slide
     if (e.button === 2) releaseSlide();
-    // releasing left click ends jump early (optional feel)
     if (e.button === 0) endJump();
   });
+
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
   /* ---------- helpers ---------- */
@@ -221,7 +219,7 @@
   }
 
   function spawnDog(){
-    obs.push({type:"dog", x:W+60, y:groundY, hitW:34, hitH:22, animT:0});
+    obs.push({type:"dog", x:W+60, y:groundY + DOG_Y_OFFSET, hitW:34, hitH:22, animT:0});
   }
 
   function chooseSpawn(){
@@ -237,11 +235,7 @@
   /* ---------- collision ---------- */
   function playerRect(){
     let h = player.h;
-
-    if (player.slideState !== "none") {
-      h = slideHeight(player.slideFrame);
-    }
-
+    if (player.slideState !== "none") h = slideHeight(player.slideFrame);
     return { x: player.x, y: player.y - h, w: player.w, h };
   }
 
@@ -277,7 +271,7 @@
       player.slideAccum += dt * SLIDE_IN_FPS;
       while (player.slideAccum >= 1) {
         player.slideAccum -= 1;
-        player.slideFrame = Math.min(2, player.slideFrame + 1); // 0->1->2
+        player.slideFrame = Math.min(2, player.slideFrame + 1);
       }
       if (player.slideFrame >= 2) {
         player.slideState = "hold";
@@ -285,7 +279,6 @@
         player.slideAccum = 0;
       }
       if (!player.slideHeld && player.slideFrame >= 1) {
-        // released very early; go out
         player.slideState = "out";
         player.slideFrame = 4;
         player.slideAccum = 0;
@@ -296,15 +289,12 @@
     if (player.slideState === "hold") {
       player.slideHoldT += dt;
 
-      // alternate 2 and 3 for a tiny "motion" while holding
-      // (purely visual; same hitbox)
-      player.slideAccum += dt * 6; // slow wiggle
+      player.slideAccum += dt * 6;
       if (player.slideAccum >= 1) {
         player.slideAccum = 0;
-        player.slideFrame = (player.slideFrame === 2) ? 3 : 2;
+        player.slideFrame = (player.slideFrame === SLIDE_HOLD_FRAMES[0]) ? SLIDE_HOLD_FRAMES[1] : SLIDE_HOLD_FRAMES[0];
       }
 
-      // release OR max time reached => out
       if (!player.slideHeld || player.slideHoldT >= SLIDE_HOLD_MAX) {
         player.slideState = "out";
         player.slideFrame = 4;
@@ -317,7 +307,7 @@
       player.slideAccum += dt * SLIDE_OUT_FPS;
       while (player.slideAccum >= 1) {
         player.slideAccum -= 1;
-        player.slideFrame = Math.min(5, player.slideFrame + 1); // 4->5
+        player.slideFrame = Math.min(5, player.slideFrame + 1);
       }
       if (player.slideFrame >= 5) {
         player.slideState = "none";
@@ -339,14 +329,11 @@
 
     score += dt * 10 * scrollMul;
 
-    // animate
     if (player.onGround && player.slideState==="none") runT += dt;
     if (!player.onGround) jumpT += dt;
 
-    // slide machine
     updateSlide(dt);
 
-    // physics
     player.vy += gravity * dt;
     player.y += player.vy * dt;
 
@@ -358,14 +345,12 @@
       player.onGround = false;
     }
 
-    // trees scroll
     for (const t of trees) t.x -= scroll * dt;
     const maxX = Math.max(...trees.map(t => t.x));
     for (const t of trees) {
       if (t.x < -TREE_DRAW) t.x = maxX + rand(260, 420);
     }
 
-    // spawn
     spawnTimer -= dt;
     const every = Math.max(0.38, spawnBase / Math.sqrt(scrollMul));
     if (spawnTimer <= 0) {
@@ -373,14 +358,15 @@
       spawnTimer = every;
     }
 
-    // obstacles move
     for (const o of obs) {
       if (o.type === "ground") o.x -= scroll * dt;
+
       if (o.type === "bat") {
         o.x -= scroll * 1.15 * dt;
         o.flap += dt * 10;
         o.y += Math.sin(o.flap) * 10 * dt;
       }
+
       if (o.type === "fall") {
         o.x -= scroll * dt;
         o.y += o.vy * dt;
@@ -391,10 +377,11 @@
           o.h = 22;
         }
       }
+
       if (o.type === "dog") {
         o.x -= scroll * DOG_SPEED * dt;
         o.animT += dt;
-        o.y = groundY;
+        o.y = groundY + DOG_Y_OFFSET; // <-- this is why changing spawn y didn't work before
       }
     }
 
@@ -442,13 +429,19 @@
     }
     ctx.imageSmoothingEnabled = old;
 
-    // sand
+    // sand (beach)
     ctx.fillStyle = "#f0d79a";
     ctx.fillRect(0, OCEAN_END, W, SAND_END - OCEAN_END);
 
-    // road
-    ctx.fillStyle = "#caa06a";
+    // sand (beach) already drawn above; now draw a real road (dark)
+    ctx.fillStyle = "#2b2b2b";
     ctx.fillRect(0, ROAD_TOP, W, ROAD_H);
+
+    // simple dashed center line
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    for (let x = 0; x < W; x += 40) {
+      ctx.fillRect(x + 10, ROAD_TOP + ROAD_H/2 - 1, 18, 2);
+    }
 
     // grass
     ctx.fillStyle = "#2f9b57";
@@ -487,7 +480,7 @@
     const f = Math.floor(o.animT * DOG_FPS) % DOG_FRAMES;
     const img = sprites.dog[f];
     if (!img || !img.complete || img.naturalWidth === 0) return;
-    ctx.drawImage(img, o.x - 14, groundY - DOG_DRAW + 6, DOG_DRAW, DOG_DRAW);
+    ctx.drawImage(img, o.x - 14, o.y - DOG_DRAW + 6, DOG_DRAW, DOG_DRAW);
   }
 
   function draw(){
@@ -513,7 +506,7 @@
       }
     }
 
-    if (!sprites.ready) {
+    if(!sprites.ready){
       ctx.fillStyle="rgba(0,0,0,.4)";
       ctx.fillRect(0,0,W,H);
       ctx.fillStyle="#fff";
@@ -533,8 +526,8 @@
   function reset(){
     running=false; gameOver=false; time=0; score=0; scrollMul=1;
     obs.length=0; spawnTimer=0;
-    player.y=groundY; player.vy=0; player.onGround=true;
 
+    player.y=groundY; player.vy=0; player.onGround=true;
     player.slideHeld=false;
     player.slideState="none";
     player.slideFrame=0;
