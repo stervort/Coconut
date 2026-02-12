@@ -5,16 +5,50 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Jared vs Coconut</title>
   <style>
-    html, body { height: 100%; margin: 0; background:#0b1320; font-family: system-ui, sans-serif; color:#e9eef7; }
-    .wrap { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:10px; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background:#0b1320;
+      font-family: system-ui, sans-serif;
+      color:#e9eef7;
+    }
+
+    .wrap {
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      height:100%;
+      gap:10px;
+    }
+
     canvas {
-      background: #071022;
+      background: linear-gradient(#69c7ff, #c9f0ff 55%, #f3d28b 55%, #f3d28b);
       border: 2px solid rgba(255,255,255,.2);
       border-radius: 10px;
     }
-    .hud { width:min(900px, 96vw); display:flex; justify-content:space-between; font-size:14px; opacity:.9; }
-    .help { width:min(900px, 96vw); font-size:13px; opacity:.75; line-height:1.35; }
-    kbd { background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18); padding:2px 6px; border-radius:6px; }
+
+    .hud {
+      width:min(900px, 96vw);
+      display:flex;
+      justify-content:space-between;
+      font-size:14px;
+      opacity:.9;
+    }
+
+    .help {
+      width:min(900px, 96vw);
+      font-size:13px;
+      opacity:.75;
+      line-height:1.35;
+    }
+
+    kbd {
+      background:rgba(255,255,255,.12);
+      border:1px solid rgba(255,255,255,.18);
+      padding:2px 6px;
+      border-radius:6px;
+    }
   </style>
 </head>
 <body>
@@ -31,8 +65,8 @@
     <canvas id="c" width="900" height="300"></canvas>
 
     <div class="help">
-      Jump: <kbd>Space</kbd> / <kbd>↑</kbd> / click (hold = higher jump) • Duck: <kbd>↓</kbd> • Restart: <kbd>R</kbd><br>
-      Watch out: occasionally a bush can partially hide a ground coconut.
+      Jump: <kbd>Space</kbd> / <kbd>↑</kbd> / click (hold = higher jump) •
+      Duck: <kbd>↓</kbd> • Restart: <kbd>R</kbd>
     </div>
   </div>
 
