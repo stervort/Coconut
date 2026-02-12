@@ -6,12 +6,14 @@
   const speedEl = document.getElementById("speed");
   const tauntEl = document.getElementById("taunt");
 
-  // --- Game constants
-  const W = canvas.width, H = canvas.height;
+  const W = canvas.width;
+  const H = canvas.height;
+
   const groundY = 245;
+
   const gravity = 2200;
 
-  // Variable jump (tap vs hold) + half-ish height
+  // variable jump (half height + tap/hold)
   const jumpVel = 410;
   const jumpCut = 0.45;
 
@@ -19,9 +21,10 @@
   const speedRamp = 0.045;
   const spawnBase = 0.95;
 
-  // --- PNG frame animation setup (your counts)
+  // sprite frames
   const RUN_FRAMES = 8;   // run_0..run_7
   const JUMP_FRAMES = 9;  // jump_0..jump_8
+
   const RUN_FPS = 12;
   const JUMP_FPS = 14;
 
@@ -31,7 +34,7 @@
     loaded: 0,
     total: RUN_FRAMES + JUMP_FRAMES,
     ready: false,
-    firstError: null,
+    firstError: null
   };
 
   function setLoadingText() {
@@ -56,25 +59,30 @@
     img.onerror = () => {
       if (!sprites.firstError) sprites.firstError = path;
       setLoadingText();
-      console.error("Failed to load sprite:", path);
+      console.error("Missing sprite:", path);
     };
     img.src = path;
     return img;
   }
 
-  for (let i = 0; i < RUN_FRAMES; i++) sprites.run.push(loadFrame(`assets/jared/run_${i}.png`));
-  for (let i = 0; i < JUMP_FRAMES; i++) sprites.jump.push(loadFrame(`assets/jared/jump_${i}.png`));
+  for (let i = 0; i < RUN_FRAMES; i++) {
+    sprites.run.push(loadFrame(`assets/jared/run_${i}.png`));
+  }
+
+  for (let i = 0; i < JUMP_FRAMES; i++) {
+    sprites.jump.push(loadFrame(`assets/jared/jump_${i}.png`));
+  }
+
   setLoadingText();
 
-  // --- State
   let running = false;
   let gameOver = false;
+
   let tPrev = performance.now();
   let time = 0;
   let score = 0;
   let scrollMul = 1;
 
-  // Player (collision box)
   const player = {
     x: 120,
     y: groundY,
@@ -82,31 +90,21 @@
     h: 44,
     vy: 0,
     onGround: true,
-    duck: false,
+    duck: false
   };
 
-  // Animation timers
   let runAnimT = 0;
   let jumpAnimT = 0;
 
-  // Obstacles
   const obs = [];
   let spawnTimer = 0;
 
-  // Decorative trees (still shapes)
-  const trees = [{ x: 650 }, { x: 980 }, { x: 1310 }, { x: 1700 }];
-
-  // --- Parallax bushes (rare)
-  const midBushes = [];
-  const fgBushes = [];
-  let midBushTimer = 0;
-  let fgBushTimer = 0;
-
-  const MID_FACTOR = 0.45;
-  const FG_FACTOR = 1.10;
-
-  // Rare bush-hiding coconuts
-  const COVER_BUSH_CHANCE = 0.12;
+  const trees = [
+    { x: 650 },
+    { x: 980 },
+    { x: 1310 },
+    { x: 1700 }
+  ];
 
   function reset() {
     running = false;
@@ -130,19 +128,14 @@
     trees[2].x = 1310;
     trees[3].x = 1700;
 
-    midBushes.length = 0;
-    fgBushes.length = 0;
-    midBushTimer = rand(2.0, 4.0);
-    fgBushTimer = rand(2.0, 4.0);
-
     scoreEl.textContent = "0";
     speedEl.textContent = "1.0x";
     tauntEl.textContent = "Coconut apprentice";
+
     setLoadingText();
     draw();
   }
 
-  // --- Input
   function startIfNeeded() {
     if (!sprites.ready) return;
     if (!running && !gameOver) {
@@ -154,6 +147,7 @@
   function jump() {
     startIfNeeded();
     if (gameOver || !sprites.ready) return;
+
     if (player.onGround) {
       player.vy = -jumpVel;
       player.onGround = false;
@@ -162,7 +156,9 @@
   }
 
   function endJumpEarly() {
-    if (!player.onGround && player.vy < 0) player.vy *= jumpCut;
+    if (!player.onGround && player.vy < 0) {
+      player.vy *= jumpCut;
+    }
   }
 
   function setDuck(v) {
@@ -171,7 +167,7 @@
     player.duck = v;
   }
 
-  window.addEventListener("keydown", (e) => {
+  window.addEventListener("keydown", e => {
     if (e.code === "Space" || e.code === "ArrowUp") {
       e.preventDefault();
       jump();
@@ -183,33 +179,29 @@
     }
   });
 
-  window.addEventListener("keyup", (e) => {
+  window.addEventListener("keyup", e => {
     if (e.code === "ArrowDown") setDuck(false);
     if (e.code === "Space" || e.code === "ArrowUp") endJumpEarly();
   });
 
-  canvas.addEventListener("pointerdown", () => jump());
+  canvas.addEventListener("pointerdown", jump);
   canvas.addEventListener("pointerup", endJumpEarly);
   canvas.addEventListener("pointercancel", endJumpEarly);
   canvas.addEventListener("pointerleave", endJumpEarly);
 
-  // --- Helpers
-  function rand(min, max) { return Math.random() * (max - min) + min; }
+  function rand(min, max) {
+    return Math.random() * (max - min) + min;
+  }
 
   function spawnGroundCoco() {
-    const o = {
+    obs.push({
       type: "groundCoco",
       x: W + 40,
       y: groundY + 8,
       r: 14,
-      hitW: 26, hitH: 22
-    };
-    obs.push(o);
-
-    // Rare cover bush that can partially hide it
-    if (Math.random() < COVER_BUSH_CHANCE) {
-      fgBushes.push(makeCoverBushForCoconut(o));
-    }
+      hitW: 26,
+      hitH: 22
+    });
   }
 
   function spawnBat() {
@@ -218,7 +210,8 @@
       type: "bat",
       x: W + 60,
       y,
-      w: 26, h: 14,
+      w: 26,
+      h: 14,
       flap: 0
     });
   }
@@ -247,7 +240,9 @@
       spawnGroundCoco();
     }
 
-    if (scrollMul > 2.1 && Math.random() < 0.18) spawnGroundCoco();
+    if (scrollMul > 2.1 && Math.random() < 0.18) {
+      spawnGroundCoco();
+    }
   }
 
   function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -261,111 +256,26 @@
 
   function checkCollisions() {
     const pr = playerRect();
+
     for (const o of obs) {
       if (o.type === "groundCoco") {
-        const bx = o.x - o.hitW / 2, by = o.y - o.hitH / 2;
+        const bx = o.x - o.hitW / 2;
+        const by = o.y - o.hitH / 2;
         if (rectsOverlap(pr.x, pr.y, pr.w, pr.h, bx, by, o.hitW, o.hitH)) return true;
       } else if (o.type === "bat") {
-        const bx = o.x, by = o.y - o.h;
+        const bx = o.x;
+        const by = o.y - o.h;
         if (rectsOverlap(pr.x, pr.y, pr.w, pr.h, bx, by, o.w, o.h)) return true;
       } else if (o.type === "fallCoco") {
-        const bx = o.x - o.r, by = o.y - o.r;
+        const bx = o.x - o.r;
+        const by = o.y - o.r;
         if (rectsOverlap(pr.x, pr.y, pr.w, pr.h, bx, by, o.r * 2, o.r * 2)) return true;
       }
     }
+
     return false;
   }
 
-  // --- Bushes (simple, rare)
-  function makeBush(x, layer, isCover) {
-    const baseY = layer === 0 ? 212 : 236;
-    const w = layer === 0 ? rand(110, 170) : rand(120, 200);
-    const h = layer === 0 ? rand(24, 38) : rand(36, 58);
-    const puffCount = Math.floor(layer === 0 ? rand(4, 6) : rand(6, 9));
-    const puffs = [];
-    for (let i = 0; i < puffCount; i++) {
-      puffs.push({
-        ox: rand(-w * 0.45, w * 0.45),
-        oy: rand(-h * 0.45, h * 0.10),
-        rx: rand(w * 0.10, w * 0.22),
-        ry: rand(h * 0.35, h * 0.70),
-      });
-    }
-    return { kind:"bush", layer, x, y: baseY, w, h, puffs, isCover:!!isCover, swaySeed: rand(0, Math.PI*2) };
-  }
-
-  function makeCoverBushForCoconut(coco) {
-    const b = makeBush(coco.x + rand(-18, 14), 1, true);
-    b.y = 238;
-    b.w = rand(130, 190);
-    b.h = rand(42, 64);
-    return b;
-  }
-
-  function moveBushLayer(arr, dt, scroll, factor) {
-    for (const b of arr) b.x -= scroll * factor * dt;
-    for (let i = arr.length - 1; i >= 0; i--) {
-      if (arr[i].x < -400) arr.splice(i, 1);
-    }
-  }
-
-  // --- Ocean + waves (pixelated)
-  function drawSkyAndOcean() {
-    // sky gradient
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0.00, "rgba(110, 215, 255, 1)");
-    g.addColorStop(0.55, "rgba(190, 245, 255, 1)");
-    g.addColorStop(0.56, "rgba(170, 235, 250, 1)");
-    g.addColorStop(1.00, "rgba(240, 250, 255, 1)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-
-    // ocean band
-    const oceanTop = 150;
-    const oceanBottom = 225;
-    ctx.fillStyle = "rgba(20, 120, 170, 0.85)";
-    ctx.fillRect(0, oceanTop, W, oceanBottom - oceanTop);
-
-    // pixel waves (animated)
-    const oldSmooth = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = false;
-
-    const t = time;
-    const tile = 8;         // pixel size
-    const waveH = 2;        // wave thickness
-    const drift = Math.floor((t * 22) % tile); // horizontal drift
-    const bands = [0.18, 0.42, 0.68];          // wave rows
-
-    for (const b of bands) {
-      const y = Math.floor(oceanTop + (oceanBottom - oceanTop) * b);
-      for (let x = -tile; x < W + tile; x += tile) {
-        const phase = ((x + drift) / tile) | 0;
-        const bump = (phase % 4 === 0) ? 1 : 0;
-
-        // darker wave base
-        ctx.fillStyle = "rgba(10, 85, 135, 0.55)";
-        ctx.fillRect(x + drift, y + bump, tile, waveH);
-
-        // bright crest pixel(s)
-        if (phase % 6 === 0) {
-          ctx.fillStyle = "rgba(210, 255, 255, 0.55)";
-          ctx.fillRect(x + drift + 2, y - 1 + bump, 3, 2);
-        }
-      }
-    }
-
-    // near-shore foam line (pixel)
-    const shoreY = oceanBottom - 6;
-    for (let x = 0; x < W; x += 6) {
-      const jitter = Math.sin((x * 0.08) + t * 3.5) > 0.2 ? 1 : 0;
-      ctx.fillStyle = "rgba(235, 255, 255, 0.55)";
-      ctx.fillRect(x, shoreY + jitter, 3, 2);
-    }
-
-    ctx.imageSmoothingEnabled = oldSmooth;
-  }
-
-  // --- Update
   function update(dt) {
     time += dt;
 
@@ -374,7 +284,8 @@
 
     score += dt * (10 * scrollMul);
     const s = Math.floor(score);
-    scoreEl.textContent = s.toString();
+
+    scoreEl.textContent = s;
     speedEl.textContent = `${scrollMul.toFixed(1)}x`;
 
     let taunt = "Coconut apprentice";
@@ -388,9 +299,9 @@
     if (player.onGround) runAnimT += dt;
     else jumpAnimT += dt;
 
-    // physics
     player.vy += gravity * dt;
     player.y += player.vy * dt;
+
     if (player.y >= groundY) {
       player.y = groundY;
       player.vy = 0;
@@ -399,36 +310,16 @@
       player.onGround = false;
     }
 
-    // move trees
     for (const tr of trees) tr.x -= scroll * dt;
+
     const maxTreeX = Math.max(...trees.map(t => t.x));
     for (const tr of trees) {
       if (tr.x < -40) tr.x = maxTreeX + rand(240, 420);
     }
 
-    // rare bushes
-    midBushTimer -= dt;
-    fgBushTimer -= dt;
-
-    if (midBushTimer <= 0) {
-      midBushes.push(makeBush(W + rand(80, 160), 0, false));
-      midBushTimer = rand(4.5, 7.5);
-    }
-
-    if (fgBushTimer <= 0) {
-      const count = Math.random() < 0.35 ? 2 : 1;
-      for (let i = 0; i < count; i++) {
-        fgBushes.push(makeBush(W + rand(80, 160) + i * rand(50, 90), 1, false));
-      }
-      fgBushTimer = rand(3.5, 6.5);
-    }
-
-    moveBushLayer(midBushes, dt, scroll, MID_FACTOR);
-    moveBushLayer(fgBushes, dt, scroll, FG_FACTOR);
-
-    // obstacles
     spawnTimer -= dt;
     const spawnEvery = Math.max(0.38, spawnBase / Math.sqrt(scrollMul));
+
     if (spawnTimer <= 0) {
       chooseSpawn();
       spawnTimer = spawnEvery * rand(0.65, 1.1);
@@ -444,11 +335,13 @@
       } else if (o.type === "fallCoco") {
         o.x -= scroll * dt;
         o.y += o.vy * dt;
+
         if (o.y >= groundY + 6) {
           o.type = "groundCoco";
           o.y = groundY + 8;
           o.r = 14;
-          o.hitW = 26; o.hitH = 22;
+          o.hitW = 26;
+          o.hitH = 22;
           delete o.vy;
         }
       }
@@ -465,7 +358,6 @@
     }
   }
 
-  // --- Drawing helpers
   function drawTreeShape(x) {
     ctx.fillStyle = "rgba(90,60,30,.7)";
     ctx.fillRect(x - 6, 90, 12, 170);
@@ -495,6 +387,7 @@
   function drawPlayerSprite() {
     const drawW = 64;
     const drawH = 64;
+
     const x = player.x - 14;
     const y = player.y - drawH + 6;
 
@@ -511,88 +404,42 @@
     }
   }
 
-  function drawBush(b) {
-    const sway = Math.sin(time * 1.6 + b.swaySeed) * (b.layer === 1 ? 2.0 : 1.0);
-
-    // shadow
-    ctx.fillStyle = b.layer === 1 ? "rgba(10,80,30,.50)" : "rgba(10,95,35,.30)";
-    ctx.beginPath();
-    ctx.ellipse(b.x + sway, b.y + 8, b.w * 0.55, b.h * 0.40, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // body
-    ctx.fillStyle = b.layer === 1 ? "rgba(30,160,70,.92)" : "rgba(40,170,80,.55)";
-    for (const p of b.puffs) {
-      ctx.beginPath();
-      ctx.ellipse(b.x + p.ox + sway, b.y + p.oy, p.rx, p.ry, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // highlight
-    ctx.fillStyle = b.layer === 1 ? "rgba(120,255,170,.20)" : "rgba(160,255,190,.10)";
-    ctx.beginPath();
-    ctx.ellipse(b.x - b.w * 0.12 + sway, b.y - b.h * 0.20, b.w * 0.20, b.h * 0.22, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // --- Draw
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
-    // NEW: sky + ocean + pixel waves
-    drawSkyAndOcean();
+    // ground
+    ctx.fillStyle = "rgba(90,60,20,.25)";
+    ctx.fillRect(0, groundY + 12, W, H - (groundY + 12));
 
-    // Mid bushes
-    for (const b of midBushes) drawBush(b);
-
-    // Sandy run surface (top strip where Jared runs)
-    ctx.fillStyle = "rgba(243, 210, 139, 0.95)"; // sandy
-    ctx.fillRect(0, groundY + 4, W, 18);
-
-    // Grass below (make the "bottom ground" green)
-    ctx.fillStyle = "rgba(35, 140, 70, 0.85)"; // lush green
-    ctx.fillRect(0, groundY + 22, W, H - (groundY + 22));
-
-    // Add a few darker green patches for texture
-    ctx.fillStyle = "rgba(20, 110, 55, 0.35)";
-    for (let x = 0; x < W; x += 90) {
-      const wiggle = Math.sin((x * 0.05) + time * 0.8) * 6;
-      ctx.fillRect(x, groundY + 26 + wiggle, 50, 6);
-    }
-
-    // Trees
+    // trees
     for (const tr of trees) drawTreeShape(tr.x);
 
-    // Banner
+    // banner
     ctx.fillStyle = "rgba(0,0,0,.28)";
     ctx.fillRect(14, 12, 190, 28);
     ctx.fillStyle = "rgba(255,255,255,.92)";
     ctx.font = "14px system-ui";
     ctx.fillText("Jared vs Coconut", 26, 31);
 
-    // Player
     drawPlayerSprite();
 
-    // Obstacles (draw before foreground bushes so bushes can hide coconuts)
     for (const o of obs) {
       if (o.type === "groundCoco") {
         ctx.fillStyle = "rgba(110,65,30,.95)";
         ctx.beginPath();
         ctx.ellipse(o.x, o.y, o.r, o.r * 0.8, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,.12)";
-        ctx.beginPath();
-        ctx.ellipse(o.x - 4, o.y - 3, 5, 4, 0, 0, Math.PI * 2);
-        ctx.fill();
       } else if (o.type === "bat") {
         ctx.fillStyle = "rgba(20,20,30,.95)";
         ctx.fillRect(o.x, o.y - 10, 10, 10);
+
         ctx.beginPath();
         ctx.moveTo(o.x, o.y - 5);
         ctx.lineTo(o.x - 16, o.y - 14);
         ctx.lineTo(o.x - 8, o.y - 2);
         ctx.closePath();
         ctx.fill();
+
         ctx.beginPath();
         ctx.moveTo(o.x + 10, o.y - 5);
         ctx.lineTo(o.x + 26, o.y - 14);
@@ -607,19 +454,12 @@
       }
     }
 
-    // Foreground bushes (occlusion layer)
-    for (const b of fgBushes) drawBush(b);
-
-    // overlays
     if (!sprites.ready) {
       ctx.fillStyle = "rgba(0,0,0,.35)";
       ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = "rgba(255,255,255,.92)";
       ctx.font = "18px system-ui";
       ctx.fillText("Loading PNG frames…", 345, 150);
-      ctx.font = "12px system-ui";
-      ctx.fillText("Expected: assets/jared/run_0.png and jump_0.png", 265, 172);
-      if (sprites.firstError) ctx.fillText(`Missing: ${sprites.firstError}`, 265, 190);
     } else if (!running && !gameOver) {
       ctx.fillStyle = "rgba(0,0,0,.35)";
       ctx.fillRect(0, 0, W, H);
@@ -628,8 +468,6 @@
       ctx.fillText("Jared vs Coconut", 360, 130);
       ctx.font = "14px system-ui";
       ctx.fillText("Press Space / ↑ / click to start and jump.", 310, 160);
-      ctx.font = "12px system-ui";
-      ctx.fillText("Tip: tap for short hop, hold for higher jump.", 330, 180);
     } else if (gameOver) {
       ctx.fillStyle = "rgba(0,0,0,.25)";
       ctx.fillRect(0, 0, W, H);
@@ -641,13 +479,13 @@
     }
   }
 
-  // --- Main loop
   function loop(now) {
     const dt = Math.min(0.033, (now - tPrev) / 1000);
     tPrev = now;
 
     if (running && !gameOver && sprites.ready) update(dt);
     draw();
+
     requestAnimationFrame(loop);
   }
 
