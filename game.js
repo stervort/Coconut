@@ -221,7 +221,7 @@
   }
 
   function spawnDog(){
-    obs.push({type:"dog", x:W+60, y:groundY-6, hitW:34, hitH:22, animT:0});
+    obs.push({type:"dog", x:W+60, y:groundY-15, hitW:34, hitH:22, animT:0});
   }
 
   function chooseSpawn(){
