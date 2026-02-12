@@ -12,7 +12,7 @@
   const gravity = 2200;
 
   // Jump: cut in half + variable height via "jump cut"
-  const jumpVel = 410;     // was 820
+  const jumpVel = 800;     // was 820
   const jumpCut = 0.45;    // release early => shorter jump (0.35–0.60 good range)
 
   const baseScroll = 320;
