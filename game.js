@@ -52,6 +52,13 @@
   const DOG_FPS    = 10;
   const DOG_SPEED  = 1.12;
 
+  /* ----- bat (NEW animated sprite) ----- */
+  const BAT_FRAMES = 14; // bat_0..bat_13
+  const BAT_FPS    = 18; // animation speed
+  const BAT_DRAW   = 64; // how big it appears on canvas (your frames are 500x500)
+  const BAT_HIT_W  = 36; // collision width
+  const BAT_HIT_H  = 18; // collision height
+
   /* ----- draw sizes ----- */
   const JARED_DRAW = 64;
   const DOG_DRAW   = 56;
@@ -63,17 +70,17 @@
   const TREE_DRAW  = 200;
   const TREE_PATH  = "assets/shrubbery/coconut_tree_1.png";
 
-  // Coconut sprite (your new 64x64 pixel art)
+  // Coconut sprite (64x64 pixel art)
   const COCONUT_PATH = "assets/shrubbery/coconut_1.png";
-  const COCONUT_GROUND_DRAW = 32; // bumped up for 64x64 art
-  const COCONUT_FALL_DRAW   = 28; // bumped up for 64x64 art
+  const COCONUT_GROUND_DRAW = 32;
+  const COCONUT_FALL_DRAW   = 28;
 
   const sprites = {
-    run:[], jump:[], slide:[], dog:[],
+    run:[], jump:[], slide:[], dog:[], bat:[],
     tree:null,
     coconut:null,
     loaded:0,
-    total: RUN_FRAMES + JUMP_FRAMES + SLIDE_FRAMES + DOG_FRAMES + 2,
+    total: RUN_FRAMES + JUMP_FRAMES + SLIDE_FRAMES + DOG_FRAMES + BAT_FRAMES + 2,
     ready:false,
     firstError:null
   };
@@ -99,6 +106,9 @@
   for (let i=0;i<JUMP_FRAMES;i++)  sprites.jump.push(load(`assets/jared/jump_${i}.png`));
   for (let i=0;i<SLIDE_FRAMES;i++) sprites.slide.push(load(`assets/jared/runslide_${i}.png`));
   for (let i=0;i<DOG_FRAMES;i++)   sprites.dog.push(load(`assets/dog/dog_${i}.png`));
+
+  // bat frames
+  for (let i=0;i<BAT_FRAMES;i++)   sprites.bat.push(load(`assets/bat/bat_${i}.png`));
 
   sprites.tree = load(TREE_PATH);
   sprites.coconut = load(COCONUT_PATH);
@@ -220,12 +230,20 @@
   function rand(a,b){ return Math.random()*(b-a)+a; }
 
   function spawnGroundCoco(){
-    // coconut sits on road surface (collision)
     obs.push({type:"ground", x:W+40, y:groundY-6, w:26, h:22});
   }
 
   function spawnBat(){
-    obs.push({type:"bat", x:W+40, y:rand(140,190), w:26, h:14, flap:0});
+    // y here is the "feet" line for hitbox top calculation below
+    obs.push({
+      type:"bat",
+      x:W+60,
+      y:rand(135, 195),   // flight band
+      hitW: BAT_HIT_W,
+      hitH: BAT_HIT_H,
+      animT: 0,
+      wiggleT: Math.random() * 10
+    });
   }
 
   function spawnFall(treeX){
@@ -265,7 +283,8 @@
         if (overlap(pr, {x:o.x,y:o.y,w:o.w,h:o.h})) return true;
       }
       if (o.type==="bat") {
-        if (overlap(pr, {x:o.x,y:o.y-o.h,w:o.w,h:o.h})) return true;
+        // bat hitbox anchored at (o.x, o.y - hitH)
+        if (overlap(pr, {x:o.x, y:o.y - o.hitH, w:o.hitW, h:o.hitH})) return true;
       }
       if (o.type==="fall") {
         if (overlap(pr, {x:o.x-o.r,y:o.y-o.r,w:o.r*2,h:o.r*2})) return true;
@@ -303,14 +322,12 @@
     if (player.slideState === "hold") {
       player.slideHoldT += dt;
 
-      // alternate 2 and 3 for tiny motion
       player.slideAccum += dt * 6;
       if (player.slideAccum >= 1) {
         player.slideAccum = 0;
         player.slideFrame = (player.slideFrame === SLIDE_HOLD_FRAMES[0]) ? SLIDE_HOLD_FRAMES[1] : SLIDE_HOLD_FRAMES[0];
       }
 
-      // release OR time cap => out
       if (!player.slideHeld || player.slideHoldT >= SLIDE_HOLD_MAX) {
         player.slideState = "out";
         player.slideFrame = 4;
@@ -382,9 +399,10 @@
       if (o.type === "ground") o.x -= scroll * dt;
 
       if (o.type === "bat") {
-        o.x -= scroll * 1.15 * dt;
-        o.flap += dt * 10;
-        o.y += Math.sin(o.flap) * 10 * dt;
+        o.x -= scroll * 1.20 * dt;
+        o.animT += dt;
+        o.wiggleT += dt * 6.5;
+        o.y += Math.sin(o.wiggleT) * 10 * dt; // gentle flutter
       }
 
       if (o.type === "fall") {
@@ -401,13 +419,13 @@
       if (o.type === "dog") {
         o.x -= scroll * DOG_SPEED * dt;
         o.animT += dt;
-        o.y = groundY + DOG_Y_OFFSET; // pinned to road
+        o.y = groundY + DOG_Y_OFFSET;
       }
     }
 
     // cleanup
     for (let i = obs.length - 1; i >= 0; i--) {
-      if (obs[i].x < -160) obs.splice(i, 1);
+      if (obs[i].x < -200) obs.splice(i, 1);
     }
 
     if (hit()) {
@@ -419,7 +437,7 @@
     scoreEl.textContent = Math.floor(score);
     speedEl.textContent = scrollMul.toFixed(1) + "x";
 
-    // taunt (optional)
+    // taunt
     const s = Math.floor(score);
     let taunt = "Coconut apprentice";
     if (s >= 200)  taunt = "Tree trainee 🌴";
@@ -481,7 +499,7 @@
 
   function treeDraw(x){
     const img = sprites.tree;
-    const y = ROAD_TOP - TREE_DRAW + 4; // trees on top side of road
+    const y = ROAD_TOP - TREE_DRAW + 4;
     ctx.imageSmoothingEnabled = false;
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, x - TREE_DRAW/2, y, TREE_DRAW, TREE_DRAW);
@@ -490,15 +508,12 @@
   }
 
   function jaredFrame(){
-    if (player.slideState !== "none") {
-      return sprites.slide[player.slideFrame] || sprites.run[0];
-    }
+    if (player.slideState !== "none") return sprites.slide[player.slideFrame] || sprites.run[0];
     if (!player.onGround) {
       const idx = Math.min(JUMP_FRAMES - 1, Math.floor(jumpT * JUMP_FPS));
       return sprites.jump[idx] || sprites.run[0];
     }
-    const r = Math.floor(runT * RUN_FPS) % RUN_FRAMES;
-    return sprites.run[r] || sprites.run[0];
+    return sprites.run[Math.floor(runT * RUN_FPS) % RUN_FRAMES] || sprites.run[0];
   }
 
   function drawPlayer(){
@@ -517,16 +532,10 @@
   function drawGroundCoconut(o){
     const img = sprites.coconut;
     if (img && img.complete && img.naturalWidth > 0) {
-      // pixel crisp
       ctx.imageSmoothingEnabled = false;
-
-      // Draw it roughly aligned with the hitbox.
-      // If it "floats", increase the +0 to +2/+4.
       const x = o.x - 2;
       const y = o.y - (COCONUT_GROUND_DRAW - o.h) + 0;
-
       ctx.drawImage(img, x, y, COCONUT_GROUND_DRAW, COCONUT_GROUND_DRAW);
-
       ctx.imageSmoothingEnabled = true;
     } else {
       ctx.fillStyle = "#6b3b1c";
@@ -538,13 +547,7 @@
     const img = sprites.coconut;
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(
-        img,
-        o.x - COCONUT_FALL_DRAW/2,
-        o.y - COCONUT_FALL_DRAW/2,
-        COCONUT_FALL_DRAW,
-        COCONUT_FALL_DRAW
-      );
+      ctx.drawImage(img, o.x - COCONUT_FALL_DRAW/2, o.y - COCONUT_FALL_DRAW/2, COCONUT_FALL_DRAW, COCONUT_FALL_DRAW);
       ctx.imageSmoothingEnabled = true;
     } else {
       ctx.fillStyle="#6b3b1c";
@@ -552,6 +555,28 @@
       ctx.arc(o.x, o.y, o.r, 0, Math.PI*2);
       ctx.fill();
     }
+  }
+
+  function drawBat(o){
+    const img = sprites.bat[Math.floor(o.animT * BAT_FPS) % BAT_FRAMES];
+    if (!img || !img.complete || img.naturalWidth === 0) {
+      // fallback
+      ctx.fillStyle = "#222";
+      ctx.fillRect(o.x, o.y - o.hitH, o.hitW, o.hitH);
+      return;
+    }
+
+    // Keep pixel crisp even though source is huge
+    ctx.imageSmoothingEnabled = false;
+
+    // Align sprite to hitbox:
+    // o.x,o.y refers to hitbox bottom-left (we use y-hitH as top)
+    const dx = o.x - (BAT_DRAW - o.hitW)/2;
+    const dy = (o.y - o.hitH) - (BAT_DRAW - o.hitH)/2;
+
+    ctx.drawImage(img, dx, dy, BAT_DRAW, BAT_DRAW);
+
+    ctx.imageSmoothingEnabled = true;
   }
 
   function draw(){
@@ -563,16 +588,10 @@
     drawPlayer();
 
     for (const o of obs) {
-      if (o.type==="ground") {
-        drawGroundCoconut(o);
-      } else if (o.type==="bat") {
-        ctx.fillStyle="#222";
-        ctx.fillRect(o.x, o.y-10, 10, 10);
-      } else if (o.type==="fall") {
-        drawFallingCoconut(o);
-      } else if (o.type==="dog") {
-        drawDog(o);
-      }
+      if (o.type==="ground") drawGroundCoconut(o);
+      else if (o.type==="fall") drawFallingCoconut(o);
+      else if (o.type==="dog") drawDog(o);
+      else if (o.type==="bat") drawBat(o);
     }
 
     if(!sprites.ready){
