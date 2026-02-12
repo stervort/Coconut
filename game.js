@@ -106,7 +106,7 @@
   // Bush settings
   const MID_FACTOR = 0.45; // parallax speed factor (slower)
   const FG_FACTOR = 1.15;  // foreground moves a bit faster than ground (feels close)
-  const COVER_BUSH_CHANCE = 0.28; // chance ground coconut gets a cover bush
+  const COVER_BUSH_CHANCE = 0.12; // chance ground coconut gets a cover bush
 
   function reset() {
     running = false;
@@ -394,17 +394,24 @@
     midBushTimer -= dt;
     fgBushTimer -= dt;
 
-    // Mid bushes: less frequent
-    if (midBushTimer <= 0) {
-      midBushes.push(makeBush(W + rand(60, 140), 0, false));
-      midBushTimer = rand(0.7, 1.4);
-    }
+// Mid bushes (very occasional)
+if (midBushTimer <= 0) {
+  midBushes.push(makeBush(W + rand(80, 160), 0, false));
+  midBushTimer = rand(4.5, 7.5);
+}
 
-    // Foreground bushes: more frequent for lush feel
-    if (fgBushTimer <= 0) {
-      fgBushes.push(makeBush(W + rand(40, 120), 1, false));
-      fgBushTimer = rand(0.45, 0.95);
-    }
+// Foreground bushes (one or two once in a while)
+if (fgBushTimer <= 0) {
+  const count = Math.random() < 0.35 ? 2 : 1;
+
+  for (let i = 0; i < count; i++) {
+    fgBushes.push(
+      makeBush(W + rand(80, 160) + i * rand(50, 90), 1, false)
+    );
+  }
+
+  fgBushTimer = rand(3.5, 6.5);
+}
 
     // move bush layers with parallax
     moveBushLayer(midBushes, dt, scroll, MID_FACTOR);
