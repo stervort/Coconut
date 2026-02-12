@@ -525,7 +525,7 @@
   function drawPlayer(){
     const img = jaredFrame();
     if (!img || !img.complete || img.naturalWidth === 0) return;
-    ctx.drawImage(img, player.x - 14, player.y - JARED_DRAW + 6, JARED_DRAW, JARED_DRAW);
+    ctx.drawImage(img, player.x - 14, player.y - JARED_DRAW + 0, JARED_DRAW, JARED_DRAW);
   }
 
   function drawDog(o){
