@@ -110,7 +110,7 @@
   const groundY = ROAD_TOP + ROAD_H;
   const gravity = 2200;
 
-  const jumpVel = 410;
+  const jumpVel = 700;
   const jumpCut = 0.45;
 
   const baseScroll = 320;
