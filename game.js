@@ -11,7 +11,7 @@
   const groundY = 245;
   const gravity = 2200;
 
-  // Jump: half height + variable (tap/hold)
+  // Variable jump (tap vs hold) + half-ish height
   const jumpVel = 410;
   const jumpCut = 0.45;
 
@@ -96,17 +96,17 @@
   // Decorative trees (still shapes)
   const trees = [{ x: 650 }, { x: 980 }, { x: 1310 }, { x: 1700 }];
 
-  // --- Parallax bushes (NEW)
-  // Two layers: mid (slower), foreground (faster, lush)
+  // --- Parallax bushes (rare)
   const midBushes = [];
   const fgBushes = [];
   let midBushTimer = 0;
   let fgBushTimer = 0;
 
-  // Bush settings
-  const MID_FACTOR = 0.45; // parallax speed factor (slower)
-  const FG_FACTOR = 1.15;  // foreground moves a bit faster than ground (feels close)
-  const COVER_BUSH_CHANCE = 0.12; // chance ground coconut gets a cover bush
+  const MID_FACTOR = 0.45;
+  const FG_FACTOR = 1.10;
+
+  // Rare bush-hiding coconuts
+  const COVER_BUSH_CHANCE = 0.12;
 
   function reset() {
     running = false;
@@ -130,35 +130,16 @@
     trees[2].x = 1310;
     trees[3].x = 1700;
 
-    // reset bushes
     midBushes.length = 0;
     fgBushes.length = 0;
-    midBushTimer = 0;
-    fgBushTimer = 0;
-
-    // seed some bushes
-    seedBushes();
+    midBushTimer = rand(2.0, 4.0);
+    fgBushTimer = rand(2.0, 4.0);
 
     scoreEl.textContent = "0";
     speedEl.textContent = "1.0x";
     tauntEl.textContent = "Coconut apprentice";
     setLoadingText();
     draw();
-  }
-
-  function seedBushes() {
-    // Mid bushes
-    let x = 0;
-    while (x < W + 300) {
-      midBushes.push(makeBush(x + rand(0, 80), 0 /*type*/, false));
-      x += rand(140, 260);
-    }
-    // Foreground bushes
-    x = 0;
-    while (x < W + 300) {
-      fgBushes.push(makeBush(x + rand(0, 70), 1 /*type*/, false));
-      x += rand(120, 220);
-    }
   }
 
   // --- Input
@@ -225,7 +206,7 @@
     };
     obs.push(o);
 
-    // Sometimes spawn a lush foreground bush that partially covers it
+    // Rare cover bush that can partially hide it
     if (Math.random() < COVER_BUSH_CHANCE) {
       fgBushes.push(makeCoverBushForCoconut(o));
     }
@@ -237,7 +218,7 @@
       type: "bat",
       x: W + 60,
       y,
-      w: 26, h: 14, // tweakable hitbox
+      w: 26, h: 14,
       flap: 0
     });
   }
@@ -295,15 +276,13 @@
     return false;
   }
 
-  // --- Bush generation (NEW)
-  // type: 0 = mid, 1 = foreground
-  function makeBush(x, type, isCover) {
-    const baseY = type === 0 ? 210 : 232;
-    const w = type === 0 ? rand(90, 170) : rand(110, 210);
-    const h = type === 0 ? rand(26, 44) : rand(38, 70);
-    const puffCount = Math.floor(type === 0 ? rand(4, 7) : rand(6, 10));
+  // --- Bushes (simple, rare)
+  function makeBush(x, layer, isCover) {
+    const baseY = layer === 0 ? 212 : 236;
+    const w = layer === 0 ? rand(110, 170) : rand(120, 200);
+    const h = layer === 0 ? rand(24, 38) : rand(36, 58);
+    const puffCount = Math.floor(layer === 0 ? rand(4, 6) : rand(6, 9));
     const puffs = [];
-
     for (let i = 0; i < puffCount; i++) {
       puffs.push({
         ox: rand(-w * 0.45, w * 0.45),
@@ -312,38 +291,78 @@
         ry: rand(h * 0.35, h * 0.70),
       });
     }
-
-    return {
-      kind: "bush",
-      layer: type,
-      x,
-      y: baseY,
-      w,
-      h,
-      puffs,
-      isCover: !!isCover,
-      // subtle sway
-      swaySeed: rand(0, Math.PI * 2)
-    };
+    return { kind:"bush", layer, x, y: baseY, w, h, puffs, isCover:!!isCover, swaySeed: rand(0, Math.PI*2) };
   }
 
   function makeCoverBushForCoconut(coco) {
-    // Place a foreground bush slightly in front of the coconut
-    // so it hides the lower half/side.
     const b = makeBush(coco.x + rand(-18, 14), 1, true);
-    b.y = 235;                // slightly lower so it overlaps the coconut
-    b.w = rand(120, 190);
-    b.h = rand(46, 78);
+    b.y = 238;
+    b.w = rand(130, 190);
+    b.h = rand(42, 64);
     return b;
   }
 
   function moveBushLayer(arr, dt, scroll, factor) {
     for (const b of arr) b.x -= scroll * factor * dt;
-
-    // remove offscreen
     for (let i = arr.length - 1; i >= 0; i--) {
       if (arr[i].x < -400) arr.splice(i, 1);
     }
+  }
+
+  // --- Ocean + waves (pixelated)
+  function drawSkyAndOcean() {
+    // sky gradient
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0.00, "rgba(110, 215, 255, 1)");
+    g.addColorStop(0.55, "rgba(190, 245, 255, 1)");
+    g.addColorStop(0.56, "rgba(170, 235, 250, 1)");
+    g.addColorStop(1.00, "rgba(240, 250, 255, 1)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // ocean band
+    const oceanTop = 150;
+    const oceanBottom = 225;
+    ctx.fillStyle = "rgba(20, 120, 170, 0.85)";
+    ctx.fillRect(0, oceanTop, W, oceanBottom - oceanTop);
+
+    // pixel waves (animated)
+    const oldSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+
+    const t = time;
+    const tile = 8;         // pixel size
+    const waveH = 2;        // wave thickness
+    const drift = Math.floor((t * 22) % tile); // horizontal drift
+    const bands = [0.18, 0.42, 0.68];          // wave rows
+
+    for (const b of bands) {
+      const y = Math.floor(oceanTop + (oceanBottom - oceanTop) * b);
+      for (let x = -tile; x < W + tile; x += tile) {
+        const phase = ((x + drift) / tile) | 0;
+        const bump = (phase % 4 === 0) ? 1 : 0;
+
+        // darker wave base
+        ctx.fillStyle = "rgba(10, 85, 135, 0.55)";
+        ctx.fillRect(x + drift, y + bump, tile, waveH);
+
+        // bright crest pixel(s)
+        if (phase % 6 === 0) {
+          ctx.fillStyle = "rgba(210, 255, 255, 0.55)";
+          ctx.fillRect(x + drift + 2, y - 1 + bump, 3, 2);
+        }
+      }
+    }
+
+    // near-shore foam line (pixel)
+    const shoreY = oceanBottom - 6;
+    for (let x = 0; x < W; x += 6) {
+      const jitter = Math.sin((x * 0.08) + t * 3.5) > 0.2 ? 1 : 0;
+      ctx.fillStyle = "rgba(235, 255, 255, 0.55)";
+      ctx.fillRect(x, shoreY + jitter, 3, 2);
+    }
+
+    ctx.imageSmoothingEnabled = oldSmooth;
   }
 
   // --- Update
@@ -366,11 +385,10 @@
     if (s >= 1800) taunt = "Jared, destroyer of coconuts 👑";
     tauntEl.textContent = taunt;
 
-    // Anim timers
     if (player.onGround) runAnimT += dt;
     else jumpAnimT += dt;
 
-    // player physics
+    // physics
     player.vy += gravity * dt;
     player.y += player.vy * dt;
     if (player.y >= groundY) {
@@ -383,41 +401,32 @@
 
     // move trees
     for (const tr of trees) tr.x -= scroll * dt;
-
-    // recycle trees
     const maxTreeX = Math.max(...trees.map(t => t.x));
     for (const tr of trees) {
       if (tr.x < -40) tr.x = maxTreeX + rand(240, 420);
     }
 
-    // spawn bushes periodically
+    // rare bushes
     midBushTimer -= dt;
     fgBushTimer -= dt;
 
-// Mid bushes (very occasional)
-if (midBushTimer <= 0) {
-  midBushes.push(makeBush(W + rand(80, 160), 0, false));
-  midBushTimer = rand(4.5, 7.5);
-}
+    if (midBushTimer <= 0) {
+      midBushes.push(makeBush(W + rand(80, 160), 0, false));
+      midBushTimer = rand(4.5, 7.5);
+    }
 
-// Foreground bushes (one or two once in a while)
-if (fgBushTimer <= 0) {
-  const count = Math.random() < 0.35 ? 2 : 1;
+    if (fgBushTimer <= 0) {
+      const count = Math.random() < 0.35 ? 2 : 1;
+      for (let i = 0; i < count; i++) {
+        fgBushes.push(makeBush(W + rand(80, 160) + i * rand(50, 90), 1, false));
+      }
+      fgBushTimer = rand(3.5, 6.5);
+    }
 
-  for (let i = 0; i < count; i++) {
-    fgBushes.push(
-      makeBush(W + rand(80, 160) + i * rand(50, 90), 1, false)
-    );
-  }
-
-  fgBushTimer = rand(3.5, 6.5);
-}
-
-    // move bush layers with parallax
     moveBushLayer(midBushes, dt, scroll, MID_FACTOR);
     moveBushLayer(fgBushes, dt, scroll, FG_FACTOR);
 
-    // spawn obstacles
+    // obstacles
     spawnTimer -= dt;
     const spawnEvery = Math.max(0.38, spawnBase / Math.sqrt(scrollMul));
     if (spawnTimer <= 0) {
@@ -425,7 +434,6 @@ if (fgBushTimer <= 0) {
       spawnTimer = spawnEvery * rand(0.65, 1.1);
     }
 
-    // update obstacles
     for (const o of obs) {
       if (o.type === "groundCoco") {
         o.x -= scroll * dt;
@@ -446,12 +454,10 @@ if (fgBushTimer <= 0) {
       }
     }
 
-    // remove offscreen obstacles
     for (let i = obs.length - 1; i >= 0; i--) {
       if (obs[i].x < -120) obs.splice(i, 1);
     }
 
-    // collision => game over
     if (checkCollisions()) {
       running = false;
       gameOver = true;
@@ -506,68 +512,53 @@ if (fgBushTimer <= 0) {
   }
 
   function drawBush(b) {
-    // lush greens (no hard-coded styles; just fills)
-    const t = time;
-    const sway = Math.sin(t * 1.6 + b.swaySeed) * (b.layer === 1 ? 2.2 : 1.2);
+    const sway = Math.sin(time * 1.6 + b.swaySeed) * (b.layer === 1 ? 2.0 : 1.0);
 
-    // Base shadow/underlayer for depth
-    ctx.fillStyle = b.layer === 1 ? "rgba(10,80,30,.55)" : "rgba(10,95,35,.35)";
+    // shadow
+    ctx.fillStyle = b.layer === 1 ? "rgba(10,80,30,.50)" : "rgba(10,95,35,.30)";
     ctx.beginPath();
     ctx.ellipse(b.x + sway, b.y + 8, b.w * 0.55, b.h * 0.40, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Main puffs
+    // body
     ctx.fillStyle = b.layer === 1 ? "rgba(30,160,70,.92)" : "rgba(40,170,80,.55)";
     for (const p of b.puffs) {
       ctx.beginPath();
-      ctx.ellipse(
-        b.x + p.ox + sway,
-        b.y + p.oy,
-        p.rx,
-        p.ry,
-        0,
-        0,
-        Math.PI * 2
-      );
+      ctx.ellipse(b.x + p.ox + sway, b.y + p.oy, p.rx, p.ry, 0, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Highlights
-    ctx.fillStyle = b.layer === 1 ? "rgba(120,255,170,.22)" : "rgba(160,255,190,.12)";
+    // highlight
+    ctx.fillStyle = b.layer === 1 ? "rgba(120,255,170,.20)" : "rgba(160,255,190,.10)";
     ctx.beginPath();
     ctx.ellipse(b.x - b.w * 0.12 + sway, b.y - b.h * 0.20, b.w * 0.20, b.h * 0.22, 0, 0, Math.PI * 2);
     ctx.fill();
-
-    // Foreground extra blades for “lush”
-    if (b.layer === 1) {
-      ctx.fillStyle = "rgba(20,120,55,.75)";
-      for (let i = 0; i < 10; i++) {
-        const bx = b.x - b.w * 0.35 + i * (b.w * 0.07) + sway;
-        const by = b.y + 10;
-        ctx.beginPath();
-        ctx.moveTo(bx, by);
-        ctx.lineTo(bx + rand(-4, 4), by - rand(12, 26));
-        ctx.lineTo(bx + rand(-2, 6), by);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
   }
 
   // --- Draw
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
-    // Ocean strip (background)
-    ctx.fillStyle = "rgba(20,90,140,.35)";
-    ctx.fillRect(0, 205, W, 40);
+    // NEW: sky + ocean + pixel waves
+    drawSkyAndOcean();
 
-    // Midground bushes (parallax)
+    // Mid bushes
     for (const b of midBushes) drawBush(b);
 
-    // Ground
-    ctx.fillStyle = "rgba(90,60,20,.25)";
-    ctx.fillRect(0, groundY + 12, W, H - (groundY + 12));
+    // Sandy run surface (top strip where Jared runs)
+    ctx.fillStyle = "rgba(243, 210, 139, 0.95)"; // sandy
+    ctx.fillRect(0, groundY + 4, W, 18);
+
+    // Grass below (make the "bottom ground" green)
+    ctx.fillStyle = "rgba(35, 140, 70, 0.85)"; // lush green
+    ctx.fillRect(0, groundY + 22, W, H - (groundY + 22));
+
+    // Add a few darker green patches for texture
+    ctx.fillStyle = "rgba(20, 110, 55, 0.35)";
+    for (let x = 0; x < W; x += 90) {
+      const wiggle = Math.sin((x * 0.05) + time * 0.8) * 6;
+      ctx.fillRect(x, groundY + 26 + wiggle, 50, 6);
+    }
 
     // Trees
     for (const tr of trees) drawTreeShape(tr.x);
@@ -582,14 +573,13 @@ if (fgBushTimer <= 0) {
     // Player
     drawPlayerSprite();
 
-    // Obstacles (draw BEFORE foreground bushes so bushes can hide coconuts)
+    // Obstacles (draw before foreground bushes so bushes can hide coconuts)
     for (const o of obs) {
       if (o.type === "groundCoco") {
         ctx.fillStyle = "rgba(110,65,30,.95)";
         ctx.beginPath();
         ctx.ellipse(o.x, o.y, o.r, o.r * 0.8, 0, 0, Math.PI * 2);
         ctx.fill();
-
         ctx.fillStyle = "rgba(255,255,255,.12)";
         ctx.beginPath();
         ctx.ellipse(o.x - 4, o.y - 3, 5, 4, 0, 0, Math.PI * 2);
@@ -617,7 +607,7 @@ if (fgBushTimer <= 0) {
       }
     }
 
-    // Foreground bushes (parallax + occlusion)
+    // Foreground bushes (occlusion layer)
     for (const b of fgBushes) drawBush(b);
 
     // overlays
