@@ -11,19 +11,17 @@
   const groundY = 245;
   const gravity = 2200;
 
-  // Jump: cut in half + variable height via "jump cut"
-  const jumpVel = 600;     // was 820
-  const jumpCut = 0.45;    // release early => shorter jump (0.35–0.60 good range)
+  // Jump: half height + variable (tap/hold)
+  const jumpVel = 410;
+  const jumpCut = 0.45;
 
   const baseScroll = 320;
   const speedRamp = 0.045;
   const spawnBase = 0.95;
 
-  // --- PNG frame animation setup (matches your filenames)
-  // run_0..run_7 => 8 frames, jump_0..jump_8 => 9 frames
-  const RUN_FRAMES = 8;
-  const JUMP_FRAMES = 9;
-
+  // --- PNG frame animation setup (your counts)
+  const RUN_FRAMES = 8;   // run_0..run_7
+  const JUMP_FRAMES = 9;  // jump_0..jump_8
   const RUN_FPS = 12;
   const JUMP_FPS = 14;
 
@@ -64,13 +62,8 @@
     return img;
   }
 
-  // IMPORTANT: Files must be in: assets/jared/
-  for (let i = 0; i < RUN_FRAMES; i++) {
-    sprites.run.push(loadFrame(`assets/jared/run_${i}.png`));
-  }
-  for (let i = 0; i < JUMP_FRAMES; i++) {
-    sprites.jump.push(loadFrame(`assets/jared/jump_${i}.png`));
-  }
+  for (let i = 0; i < RUN_FRAMES; i++) sprites.run.push(loadFrame(`assets/jared/run_${i}.png`));
+  for (let i = 0; i < JUMP_FRAMES; i++) sprites.jump.push(loadFrame(`assets/jared/jump_${i}.png`));
   setLoadingText();
 
   // --- State
@@ -100,8 +93,20 @@
   const obs = [];
   let spawnTimer = 0;
 
-  // Decorative trees (still shapes for now)
+  // Decorative trees (still shapes)
   const trees = [{ x: 650 }, { x: 980 }, { x: 1310 }, { x: 1700 }];
+
+  // --- Parallax bushes (NEW)
+  // Two layers: mid (slower), foreground (faster, lush)
+  const midBushes = [];
+  const fgBushes = [];
+  let midBushTimer = 0;
+  let fgBushTimer = 0;
+
+  // Bush settings
+  const MID_FACTOR = 0.45; // parallax speed factor (slower)
+  const FG_FACTOR = 1.15;  // foreground moves a bit faster than ground (feels close)
+  const COVER_BUSH_CHANCE = 0.28; // chance ground coconut gets a cover bush
 
   function reset() {
     running = false;
@@ -125,11 +130,35 @@
     trees[2].x = 1310;
     trees[3].x = 1700;
 
+    // reset bushes
+    midBushes.length = 0;
+    fgBushes.length = 0;
+    midBushTimer = 0;
+    fgBushTimer = 0;
+
+    // seed some bushes
+    seedBushes();
+
     scoreEl.textContent = "0";
     speedEl.textContent = "1.0x";
     tauntEl.textContent = "Coconut apprentice";
     setLoadingText();
     draw();
+  }
+
+  function seedBushes() {
+    // Mid bushes
+    let x = 0;
+    while (x < W + 300) {
+      midBushes.push(makeBush(x + rand(0, 80), 0 /*type*/, false));
+      x += rand(140, 260);
+    }
+    // Foreground bushes
+    x = 0;
+    while (x < W + 300) {
+      fgBushes.push(makeBush(x + rand(0, 70), 1 /*type*/, false));
+      x += rand(120, 220);
+    }
   }
 
   // --- Input
@@ -151,11 +180,8 @@
     }
   }
 
-  // Variable jump height: release early -> smaller jump
   function endJumpEarly() {
-    if (!player.onGround && player.vy < 0) {
-      player.vy *= jumpCut;
-    }
+    if (!player.onGround && player.vy < 0) player.vy *= jumpCut;
   }
 
   function setDuck(v) {
@@ -178,11 +204,7 @@
 
   window.addEventListener("keyup", (e) => {
     if (e.code === "ArrowDown") setDuck(false);
-
-    // Jump release => shorter hop
-    if (e.code === "Space" || e.code === "ArrowUp") {
-      endJumpEarly();
-    }
+    if (e.code === "Space" || e.code === "ArrowUp") endJumpEarly();
   });
 
   canvas.addEventListener("pointerdown", () => jump());
@@ -194,13 +216,19 @@
   function rand(min, max) { return Math.random() * (max - min) + min; }
 
   function spawnGroundCoco() {
-    obs.push({
+    const o = {
       type: "groundCoco",
       x: W + 40,
       y: groundY + 8,
       r: 14,
       hitW: 26, hitH: 22
-    });
+    };
+    obs.push(o);
+
+    // Sometimes spawn a lush foreground bush that partially covers it
+    if (Math.random() < COVER_BUSH_CHANCE) {
+      fgBushes.push(makeCoverBushForCoconut(o));
+    }
   }
 
   function spawnBat() {
@@ -209,7 +237,7 @@
       type: "bat",
       x: W + 60,
       y,
-      w: 26, h: 14,
+      w: 26, h: 14, // tweakable hitbox
       flap: 0
     });
   }
@@ -267,6 +295,57 @@
     return false;
   }
 
+  // --- Bush generation (NEW)
+  // type: 0 = mid, 1 = foreground
+  function makeBush(x, type, isCover) {
+    const baseY = type === 0 ? 210 : 232;
+    const w = type === 0 ? rand(90, 170) : rand(110, 210);
+    const h = type === 0 ? rand(26, 44) : rand(38, 70);
+    const puffCount = Math.floor(type === 0 ? rand(4, 7) : rand(6, 10));
+    const puffs = [];
+
+    for (let i = 0; i < puffCount; i++) {
+      puffs.push({
+        ox: rand(-w * 0.45, w * 0.45),
+        oy: rand(-h * 0.45, h * 0.10),
+        rx: rand(w * 0.10, w * 0.22),
+        ry: rand(h * 0.35, h * 0.70),
+      });
+    }
+
+    return {
+      kind: "bush",
+      layer: type,
+      x,
+      y: baseY,
+      w,
+      h,
+      puffs,
+      isCover: !!isCover,
+      // subtle sway
+      swaySeed: rand(0, Math.PI * 2)
+    };
+  }
+
+  function makeCoverBushForCoconut(coco) {
+    // Place a foreground bush slightly in front of the coconut
+    // so it hides the lower half/side.
+    const b = makeBush(coco.x + rand(-18, 14), 1, true);
+    b.y = 235;                // slightly lower so it overlaps the coconut
+    b.w = rand(120, 190);
+    b.h = rand(46, 78);
+    return b;
+  }
+
+  function moveBushLayer(arr, dt, scroll, factor) {
+    for (const b of arr) b.x -= scroll * factor * dt;
+
+    // remove offscreen
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (arr[i].x < -400) arr.splice(i, 1);
+    }
+  }
+
   // --- Update
   function update(dt) {
     time += dt;
@@ -311,6 +390,26 @@
       if (tr.x < -40) tr.x = maxTreeX + rand(240, 420);
     }
 
+    // spawn bushes periodically
+    midBushTimer -= dt;
+    fgBushTimer -= dt;
+
+    // Mid bushes: less frequent
+    if (midBushTimer <= 0) {
+      midBushes.push(makeBush(W + rand(60, 140), 0, false));
+      midBushTimer = rand(0.7, 1.4);
+    }
+
+    // Foreground bushes: more frequent for lush feel
+    if (fgBushTimer <= 0) {
+      fgBushes.push(makeBush(W + rand(40, 120), 1, false));
+      fgBushTimer = rand(0.45, 0.95);
+    }
+
+    // move bush layers with parallax
+    moveBushLayer(midBushes, dt, scroll, MID_FACTOR);
+    moveBushLayer(fgBushes, dt, scroll, FG_FACTOR);
+
     // spawn obstacles
     spawnTimer -= dt;
     const spawnEvery = Math.max(0.38, spawnBase / Math.sqrt(scrollMul));
@@ -340,7 +439,7 @@
       }
     }
 
-    // remove offscreen
+    // remove offscreen obstacles
     for (let i = obs.length - 1; i >= 0; i--) {
       if (obs[i].x < -120) obs.splice(i, 1);
     }
@@ -353,7 +452,7 @@
     }
   }
 
-  // --- Draw helpers
+  // --- Drawing helpers
   function drawTreeShape(x) {
     ctx.fillStyle = "rgba(90,60,30,.7)";
     ctx.fillRect(x - 6, 90, 12, 170);
@@ -372,21 +471,17 @@
   }
 
   function getRunFrameIndex() {
-    if (RUN_FRAMES <= 1) return 0;
     return Math.floor(runAnimT * RUN_FPS) % RUN_FRAMES;
   }
 
   function getJumpFrameIndex() {
-    if (JUMP_FRAMES <= 1) return 0;
     const idx = Math.floor(jumpAnimT * JUMP_FPS);
     return Math.min(idx, JUMP_FRAMES - 1);
   }
 
   function drawPlayerSprite() {
-    // You can tweak these to match your art size
     const drawW = 64;
     const drawH = 64;
-
     const x = player.x - 14;
     const y = player.y - drawH + 6;
 
@@ -403,37 +498,94 @@
     }
   }
 
+  function drawBush(b) {
+    // lush greens (no hard-coded styles; just fills)
+    const t = time;
+    const sway = Math.sin(t * 1.6 + b.swaySeed) * (b.layer === 1 ? 2.2 : 1.2);
+
+    // Base shadow/underlayer for depth
+    ctx.fillStyle = b.layer === 1 ? "rgba(10,80,30,.55)" : "rgba(10,95,35,.35)";
+    ctx.beginPath();
+    ctx.ellipse(b.x + sway, b.y + 8, b.w * 0.55, b.h * 0.40, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Main puffs
+    ctx.fillStyle = b.layer === 1 ? "rgba(30,160,70,.92)" : "rgba(40,170,80,.55)";
+    for (const p of b.puffs) {
+      ctx.beginPath();
+      ctx.ellipse(
+        b.x + p.ox + sway,
+        b.y + p.oy,
+        p.rx,
+        p.ry,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+
+    // Highlights
+    ctx.fillStyle = b.layer === 1 ? "rgba(120,255,170,.22)" : "rgba(160,255,190,.12)";
+    ctx.beginPath();
+    ctx.ellipse(b.x - b.w * 0.12 + sway, b.y - b.h * 0.20, b.w * 0.20, b.h * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Foreground extra blades for “lush”
+    if (b.layer === 1) {
+      ctx.fillStyle = "rgba(20,120,55,.75)";
+      for (let i = 0; i < 10; i++) {
+        const bx = b.x - b.w * 0.35 + i * (b.w * 0.07) + sway;
+        const by = b.y + 10;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(bx + rand(-4, 4), by - rand(12, 26));
+        ctx.lineTo(bx + rand(-2, 6), by);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
   // --- Draw
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
-    // ocean strip
+    // Ocean strip (background)
     ctx.fillStyle = "rgba(20,90,140,.35)";
     ctx.fillRect(0, 205, W, 40);
 
-    // ground
+    // Midground bushes (parallax)
+    for (const b of midBushes) drawBush(b);
+
+    // Ground
     ctx.fillStyle = "rgba(90,60,20,.25)";
     ctx.fillRect(0, groundY + 12, W, H - (groundY + 12));
 
-    // trees
+    // Trees
     for (const tr of trees) drawTreeShape(tr.x);
 
-    // banner
+    // Banner
     ctx.fillStyle = "rgba(0,0,0,.28)";
     ctx.fillRect(14, 12, 190, 28);
     ctx.fillStyle = "rgba(255,255,255,.92)";
     ctx.font = "14px system-ui";
     ctx.fillText("Jared vs Coconut", 26, 31);
 
-    // player
+    // Player
     drawPlayerSprite();
 
-    // obstacles (shapes for now)
+    // Obstacles (draw BEFORE foreground bushes so bushes can hide coconuts)
     for (const o of obs) {
       if (o.type === "groundCoco") {
         ctx.fillStyle = "rgba(110,65,30,.95)";
         ctx.beginPath();
         ctx.ellipse(o.x, o.y, o.r, o.r * 0.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "rgba(255,255,255,.12)";
+        ctx.beginPath();
+        ctx.ellipse(o.x - 4, o.y - 3, 5, 4, 0, 0, Math.PI * 2);
         ctx.fill();
       } else if (o.type === "bat") {
         ctx.fillStyle = "rgba(20,20,30,.95)";
@@ -457,6 +609,9 @@
         ctx.fill();
       }
     }
+
+    // Foreground bushes (parallax + occlusion)
+    for (const b of fgBushes) drawBush(b);
 
     // overlays
     if (!sprites.ready) {
