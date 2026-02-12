@@ -9,48 +9,61 @@
   const W = canvas.width;
   const H = canvas.height;
 
-  const groundY = 245;
+  // --- Scene layout
+  const roadY = 245;              // "feet line"
+  const ROAD_H = 22;
+  const GRASS_TOP = roadY + ROAD_H;
 
+  // --- Physics
   const gravity = 2200;
 
-  // variable jump (half height + tap/hold)
+  // variable jump (tap/hold)
   const jumpVel = 410;
   const jumpCut = 0.45;
 
+  // --- Speed
   const baseScroll = 320;
   const speedRamp = 0.045;
   const spawnBase = 0.95;
 
-  // Jared sprite frames
-  const RUN_FRAMES = 8;   // run_0..run_7
-  const JUMP_FRAMES = 9;  // jump_0..jump_8
+  // --- Jared sprite frames
+  const RUN_FRAMES = 8;
+  const JUMP_FRAMES = 9;
   const RUN_FPS = 12;
   const JUMP_FPS = 14;
 
-  // Dog sprite frames (NEW)
-  const DOG_FRAMES = 6; // dog_0..dog_5
-  const DOG_FPS = 10;   // animation speed
-  const DOG_SPEED_FACTOR = 1.12; // dog moves 12% faster than ground scroll
+  // --- Dog frames
+  const DOG_FRAMES = 6;           // dog_0..dog_5.png
+  const DOG_FPS = 10;
+  const DOG_SPEED_FACTOR = 1.12;  // slightly faster than the world scroll
 
+  // --- Drawing sizes
+  const JARED_DRAW = 64;
+  const DOG_DRAW = 56;
+
+  // --- Coconut tree sprite (NEW)
+  // If your file is not .png, change the extension here.
+  const TREE_PATH = "assets/shrubbery/coconut_tree_1.png";
+  const TREE_DRAW = 220;          // how big it appears on canvas
+  const TREE_BOTTOM_PAD = 6;      // tweak if it floats/sinks
+
+  const groundY = roadY;          // physics ground line
+
+  // --- Assets
   const sprites = {
     run: [],
     jump: [],
     dog: [],
+    tree: null,
     loaded: 0,
-    total: RUN_FRAMES + JUMP_FRAMES + DOG_FRAMES,
+    total: RUN_FRAMES + JUMP_FRAMES + DOG_FRAMES + 1, // +1 for the tree sprite
     ready: false,
     firstError: null
   };
 
   function setLoadingText() {
-    if (sprites.ready) {
-      statusEl.textContent = "Ready";
-      return;
-    }
-    if (sprites.firstError) {
-      statusEl.textContent = `Missing sprite: ${sprites.firstError}`;
-      return;
-    }
+    if (sprites.ready) { statusEl.textContent = "Ready"; return; }
+    if (sprites.firstError) { statusEl.textContent = `Missing sprite: ${sprites.firstError}`; return; }
     statusEl.textContent = `Loading sprites… (${sprites.loaded}/${sprites.total})`;
   }
 
@@ -70,12 +83,19 @@
     return img;
   }
 
+  // Load Jared
   for (let i = 0; i < RUN_FRAMES; i++) sprites.run.push(loadFrame(`assets/jared/run_${i}.png`));
   for (let i = 0; i < JUMP_FRAMES; i++) sprites.jump.push(loadFrame(`assets/jared/jump_${i}.png`));
+
+  // Load dog
   for (let i = 0; i < DOG_FRAMES; i++) sprites.dog.push(loadFrame(`assets/dog/dog_${i}.png`));
+
+  // Load tree
+  sprites.tree = loadFrame(TREE_PATH);
 
   setLoadingText();
 
+  // --- State
   let running = false;
   let gameOver = false;
 
@@ -100,6 +120,7 @@
   const obs = [];
   let spawnTimer = 0;
 
+  // Tree "slots" in the scene (they scroll)
   const trees = [
     { x: 650 },
     { x: 980 },
@@ -137,6 +158,7 @@
     draw();
   }
 
+  // --- Input
   function startIfNeeded() {
     if (!sprites.ready) return;
     if (!running && !gameOver) {
@@ -148,7 +170,6 @@
   function jump() {
     startIfNeeded();
     if (gameOver || !sprites.ready) return;
-
     if (player.onGround) {
       player.vy = -jumpVel;
       player.onGround = false;
@@ -167,15 +188,9 @@
   }
 
   window.addEventListener("keydown", e => {
-    if (e.code === "Space" || e.code === "ArrowUp") {
-      e.preventDefault();
-      jump();
-    } else if (e.code === "ArrowDown") {
-      e.preventDefault();
-      setDuck(true);
-    } else if (e.code === "KeyR") {
-      reset();
-    }
+    if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); jump(); }
+    else if (e.code === "ArrowDown") { e.preventDefault(); setDuck(true); }
+    else if (e.code === "KeyR") reset();
   });
 
   window.addEventListener("keyup", e => {
@@ -188,9 +203,8 @@
   canvas.addEventListener("pointercancel", endJumpEarly);
   canvas.addEventListener("pointerleave", endJumpEarly);
 
-  function rand(min, max) {
-    return Math.random() * (max - min) + min;
-  }
+  // --- Helpers
+  function rand(min, max) { return Math.random() * (max - min) + min; }
 
   function spawnGroundCoco() {
     obs.push({
@@ -225,16 +239,13 @@
     });
   }
 
-  // NEW: dog obstacle
   function spawnDog() {
     obs.push({
       type: "dog",
-      x: W + 80,
-      // dog walks on ground
-      y: groundY,
-      // hitbox (tune these if needed)
+      x: W + 90,
+      y: groundY,     // pinned to ground
       hitW: 34,
-      hitH: 22,
+      hitH: 20,
       animT: 0
     });
   }
@@ -242,25 +253,18 @@
   function chooseSpawn() {
     const pFall = Math.min(0.65, 0.25 + (scrollMul - 1) * 0.18);
     const pBat  = Math.min(0.45, 0.12 + (scrollMul - 1) * 0.12);
-
-    // NEW: introduce dog chance (ground enemy)
     const pDog  = Math.min(0.35, 0.10 + (scrollMul - 1) * 0.10);
 
     const roll = Math.random();
 
-    if (roll < pDog) {
-      spawnDog();
-    } else if (roll < pDog + pBat) {
-      spawnBat();
-    } else if (roll < pDog + pBat + pFall) {
+    if (roll < pDog) spawnDog();
+    else if (roll < pDog + pBat) spawnBat();
+    else if (roll < pDog + pBat + pFall) {
       const tree = trees.find(tr => tr.x > player.x + 200) || trees[0];
       spawnFallCoco(tree.x);
-    } else {
-      spawnGroundCoco();
-    }
+    } else spawnGroundCoco();
 
     if (scrollMul > 2.1 && Math.random() < 0.12) {
-      // occasional extra ground obstacle
       (Math.random() < 0.5) ? spawnGroundCoco() : spawnDog();
     }
   }
@@ -291,14 +295,155 @@
         const by = o.y - o.r;
         if (rectsOverlap(pr.x, pr.y, pr.w, pr.h, bx, by, o.r * 2, o.r * 2)) return true;
       } else if (o.type === "dog") {
-        // dog hitbox anchored to ground
-        const bx = o.x;                 // left
-        const by = o.y - o.hitH;        // top
+        const bx = o.x;
+        const by = o.y - o.hitH;
         if (rectsOverlap(pr.x, pr.y, pr.w, pr.h, bx, by, o.hitW, o.hitH)) return true;
       }
     }
-
     return false;
+  }
+
+  // --- Background drawing (sky + ocean + road + grass)
+  function drawBackground() {
+    // sky
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0.00, "#67d4ff");
+    g.addColorStop(0.55, "#c9f0ff");
+    g.addColorStop(1.00, "#eaf7ff");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // ocean
+    const oceanTop = 150;
+    const oceanBottom = 225;
+    ctx.fillStyle = "rgba(20, 120, 170, 0.85)";
+    ctx.fillRect(0, oceanTop, W, oceanBottom - oceanTop);
+
+    // pixel-ish waves
+    const oldSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+
+    const tile = 8;
+    const drift = Math.floor((time * 22) % tile);
+
+    for (let row = 0; row < 3; row++) {
+      const y = oceanTop + 18 + row * 18;
+      for (let x = -tile; x < W + tile; x += tile) {
+        const phase = ((x + drift) / tile) | 0;
+        const bump = (phase % 4 === 0) ? 1 : 0;
+
+        ctx.fillStyle = "rgba(10, 85, 135, 0.45)";
+        ctx.fillRect(x + drift, y + bump, tile, 2);
+
+        if (phase % 6 === 0) {
+          ctx.fillStyle = "rgba(220, 255, 255, 0.45)";
+          ctx.fillRect(x + drift + 2, y - 1 + bump, 3, 2);
+        }
+      }
+    }
+
+    const shoreY = oceanBottom - 6;
+    for (let x = 0; x < W; x += 6) {
+      const jitter = Math.sin((x * 0.08) + time * 3.5) > 0.2 ? 1 : 0;
+      ctx.fillStyle = "rgba(235, 255, 255, 0.45)";
+      ctx.fillRect(x, shoreY + jitter, 3, 2);
+    }
+
+    ctx.imageSmoothingEnabled = oldSmooth;
+
+    // road (sand)
+    ctx.fillStyle = "rgba(243, 210, 139, 0.95)";
+    ctx.fillRect(0, roadY + 4, W, ROAD_H);
+
+    // speckles on road
+    ctx.fillStyle = "rgba(190, 160, 100, 0.25)";
+    for (let x = 0; x < W; x += 38) {
+      const yy = roadY + 8 + ((x / 38) % 2) * 4;
+      ctx.fillRect(x, yy, 6, 2);
+      ctx.fillRect(x + 12, yy + 6, 4, 2);
+    }
+
+    // grass
+    ctx.fillStyle = "rgba(35, 145, 72, 0.90)";
+    ctx.fillRect(0, GRASS_TOP, W, H - GRASS_TOP);
+
+    ctx.fillStyle = "rgba(15, 110, 55, 0.35)";
+    for (let x = 0; x < W; x += 90) {
+      const wiggle = Math.sin((x * 0.05) + time * 0.8) * 6;
+      ctx.fillRect(x, GRASS_TOP + 4 + wiggle, 50, 6);
+    }
+  }
+
+  // --- NEW: tree sprite draw
+  function drawTreeSprite(x) {
+    const img = sprites.tree;
+
+    // If your tree is pixel-art-ish and you want crisp scaling:
+    const oldSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+
+    if (img && img.complete && img.naturalWidth > 0) {
+      const w = TREE_DRAW;
+      const h = TREE_DRAW;
+      const drawX = x - w * 0.5;
+      const drawY = groundY - h + TREE_BOTTOM_PAD;
+      ctx.drawImage(img, drawX, drawY, w, h);
+    } else {
+      // fallback if tree missing
+      ctx.fillStyle = "rgba(0,0,0,.15)";
+      ctx.fillRect(x - 10, 80, 20, 170);
+    }
+
+    ctx.imageSmoothingEnabled = oldSmooth;
+  }
+
+  function getRunFrameIndex() {
+    return Math.floor(runAnimT * RUN_FPS) % RUN_FRAMES;
+  }
+
+  function getJumpFrameIndex() {
+    const idx = Math.floor(jumpAnimT * JUMP_FPS);
+    return Math.min(idx, JUMP_FRAMES - 1);
+  }
+
+  function getDogFrameIndex(animT) {
+    return Math.floor(animT * DOG_FPS) % DOG_FRAMES;
+  }
+
+  function drawPlayerSprite() {
+    const drawW = JARED_DRAW;
+    const drawH = JARED_DRAW;
+
+    const x = player.x - 14;
+    const y = player.y - drawH + 6;
+
+    const img = player.onGround
+      ? sprites.run[getRunFrameIndex()]
+      : sprites.jump[getJumpFrameIndex()];
+
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, x, y, drawW, drawH);
+    } else {
+      const pr = playerRect();
+      ctx.fillStyle = "rgba(240,240,255,.92)";
+      ctx.fillRect(pr.x, pr.y, pr.w, pr.h);
+    }
+  }
+
+  function drawDog(o) {
+    const drawW = DOG_DRAW;
+    const drawH = DOG_DRAW;
+
+    const x = o.x - 10;
+    const y = groundY - drawH + 6;
+
+    const img = sprites.dog[getDogFrameIndex(o.animT)] || null;
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, x, y, drawW, drawH);
+    } else {
+      ctx.fillStyle = "rgba(255, 200, 200, .7)";
+      ctx.fillRect(o.x, o.y - o.hitH, o.hitW, o.hitH);
+    }
   }
 
   function update(dt) {
@@ -309,7 +454,6 @@
 
     score += dt * (10 * scrollMul);
     const s = Math.floor(score);
-
     scoreEl.textContent = s;
     speedEl.textContent = `${scrollMul.toFixed(1)}x`;
 
@@ -336,11 +480,11 @@
       player.onGround = false;
     }
 
-    // trees
+    // trees scroll
     for (const tr of trees) tr.x -= scroll * dt;
     const maxTreeX = Math.max(...trees.map(t => t.x));
     for (const tr of trees) {
-      if (tr.x < -40) tr.x = maxTreeX + rand(240, 420);
+      if (tr.x < -TREE_DRAW * 0.6) tr.x = maxTreeX + rand(240, 420);
     }
 
     // spawn obstacles
@@ -362,7 +506,6 @@
       } else if (o.type === "fallCoco") {
         o.x -= scroll * dt;
         o.y += o.vy * dt;
-
         if (o.y >= groundY + 6) {
           o.type = "groundCoco";
           o.y = groundY + 8;
@@ -372,18 +515,18 @@
           delete o.vy;
         }
       } else if (o.type === "dog") {
-        // dog walks a bit faster than the ground scroll
         o.x -= (scroll * DOG_SPEED_FACTOR) * dt;
         o.animT += dt;
+        o.y = groundY;
       }
     }
 
     // remove offscreen obstacles
     for (let i = obs.length - 1; i >= 0; i--) {
-      if (obs[i].x < -160) obs.splice(i, 1);
+      if (obs[i].x < -220) obs.splice(i, 1);
     }
 
-    // collision
+    // collisions
     if (checkCollisions()) {
       running = false;
       gameOver = true;
@@ -391,85 +534,13 @@
     }
   }
 
-  function drawTreeShape(x) {
-    ctx.fillStyle = "rgba(90,60,30,.7)";
-    ctx.fillRect(x - 6, 90, 12, 170);
-
-    ctx.fillStyle = "rgba(20,120,60,.7)";
-    ctx.beginPath();
-    ctx.ellipse(x, 85, 45, 28, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "rgba(120,70,35,.7)";
-    for (let i = 0; i < 3; i++) {
-      ctx.beginPath();
-      ctx.arc(x + (i - 1) * 10, 85 + (i % 2) * 8, 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  function getRunFrameIndex() {
-    return Math.floor(runAnimT * RUN_FPS) % RUN_FRAMES;
-  }
-
-  function getJumpFrameIndex() {
-    const idx = Math.floor(jumpAnimT * JUMP_FPS);
-    return Math.min(idx, JUMP_FRAMES - 1);
-  }
-
-  function getDogFrameIndex(animT) {
-    return Math.floor(animT * DOG_FPS) % DOG_FRAMES;
-  }
-
-  function drawPlayerSprite() {
-    const drawW = 64;
-    const drawH = 64;
-
-    const x = player.x - 14;
-    const y = player.y - drawH + 6;
-
-    const img = player.onGround
-      ? sprites.run[getRunFrameIndex()]
-      : sprites.jump[getJumpFrameIndex()];
-
-    if (img && img.complete && img.naturalWidth > 0) {
-      ctx.drawImage(img, x, y, drawW, drawH);
-    } else {
-      const pr = playerRect();
-      ctx.fillStyle = "rgba(240,240,255,.92)";
-      ctx.fillRect(pr.x, pr.y, pr.w, pr.h);
-    }
-  }
-
-  function drawDog(o) {
-    // If your dog art is 56x56, drawing at 56 or 64 both work.
-    // Start with 64 to match Jared scale, then tune if needed.
-    const drawW = 64;
-    const drawH = 64;
-
-    // anchor feet on groundY
-    const x = o.x - 12;            // slight left offset for nicer placement
-    const y = o.y - drawH + 6;
-
-    const img = sprites.dog[getDogFrameIndex(o.animT)] || null;
-    if (img && img.complete && img.naturalWidth > 0) {
-      ctx.drawImage(img, x, y, drawW, drawH);
-    } else {
-      // fallback hitbox rectangle
-      ctx.fillStyle = "rgba(255, 200, 200, .7)";
-      ctx.fillRect(o.x, o.y - o.hitH, o.hitW, o.hitH);
-    }
-  }
-
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
-    // ground
-    ctx.fillStyle = "rgba(90,60,20,.25)";
-    ctx.fillRect(0, groundY + 12, W, H - (groundY + 12));
+    drawBackground();
 
-    // trees
-    for (const tr of trees) drawTreeShape(tr.x);
+    // trees behind action
+    for (const tr of trees) drawTreeSprite(tr.x);
 
     // banner
     ctx.fillStyle = "rgba(0,0,0,.28)";
@@ -515,12 +586,15 @@
       }
     }
 
+    // overlays
     if (!sprites.ready) {
       ctx.fillStyle = "rgba(0,0,0,.35)";
       ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = "rgba(255,255,255,.92)";
       ctx.font = "18px system-ui";
       ctx.fillText("Loading PNG frames…", 345, 150);
+      ctx.font = "12px system-ui";
+      ctx.fillText("Check assets paths + extensions.", 360, 170);
     } else if (!running && !gameOver) {
       ctx.fillStyle = "rgba(0,0,0,.35)";
       ctx.fillRect(0, 0, W, H);
