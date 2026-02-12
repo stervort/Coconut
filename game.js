@@ -230,7 +230,7 @@
   function rand(a,b){ return Math.random()*(b-a)+a; }
 
   function spawnGroundCoco(){
-    obs.push({type:"ground", x:W+40, y:groundY+50, w:26, h:22});
+    obs.push({type:"ground", x:W+40, y:groundY-20, w:26, h:22});
   }
 
   function spawnBat(){
