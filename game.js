@@ -64,7 +64,7 @@
   const DOG_DRAW   = 56;
 
   // Moves dog DOWN/UP (sprite + hitbox). Increase to move down.
-  const DOG_Y_OFFSET = 10;
+  const DOG_Y_OFFSET = 5;
 
   // Tree + coconut sprites
   const TREE_DRAW  = 200;
