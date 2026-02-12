@@ -21,18 +21,23 @@
   const speedRamp = 0.045;
   const spawnBase = 0.95;
 
-  // sprite frames
+  // Jared sprite frames
   const RUN_FRAMES = 8;   // run_0..run_7
   const JUMP_FRAMES = 9;  // jump_0..jump_8
-
   const RUN_FPS = 12;
   const JUMP_FPS = 14;
+
+  // Dog sprite frames (NEW)
+  const DOG_FRAMES = 6; // dog_0..dog_5
+  const DOG_FPS = 10;   // animation speed
+  const DOG_SPEED_FACTOR = 1.12; // dog moves 12% faster than ground scroll
 
   const sprites = {
     run: [],
     jump: [],
+    dog: [],
     loaded: 0,
-    total: RUN_FRAMES + JUMP_FRAMES,
+    total: RUN_FRAMES + JUMP_FRAMES + DOG_FRAMES,
     ready: false,
     firstError: null
   };
@@ -65,13 +70,9 @@
     return img;
   }
 
-  for (let i = 0; i < RUN_FRAMES; i++) {
-    sprites.run.push(loadFrame(`assets/jared/run_${i}.png`));
-  }
-
-  for (let i = 0; i < JUMP_FRAMES; i++) {
-    sprites.jump.push(loadFrame(`assets/jared/jump_${i}.png`));
-  }
+  for (let i = 0; i < RUN_FRAMES; i++) sprites.run.push(loadFrame(`assets/jared/run_${i}.png`));
+  for (let i = 0; i < JUMP_FRAMES; i++) sprites.jump.push(loadFrame(`assets/jared/jump_${i}.png`));
+  for (let i = 0; i < DOG_FRAMES; i++) sprites.dog.push(loadFrame(`assets/dog/dog_${i}.png`));
 
   setLoadingText();
 
@@ -156,9 +157,7 @@
   }
 
   function endJumpEarly() {
-    if (!player.onGround && player.vy < 0) {
-      player.vy *= jumpCut;
-    }
+    if (!player.onGround && player.vy < 0) player.vy *= jumpCut;
   }
 
   function setDuck(v) {
@@ -226,22 +225,43 @@
     });
   }
 
+  // NEW: dog obstacle
+  function spawnDog() {
+    obs.push({
+      type: "dog",
+      x: W + 80,
+      // dog walks on ground
+      y: groundY,
+      // hitbox (tune these if needed)
+      hitW: 34,
+      hitH: 22,
+      animT: 0
+    });
+  }
+
   function chooseSpawn() {
     const pFall = Math.min(0.65, 0.25 + (scrollMul - 1) * 0.18);
     const pBat  = Math.min(0.45, 0.12 + (scrollMul - 1) * 0.12);
+
+    // NEW: introduce dog chance (ground enemy)
+    const pDog  = Math.min(0.35, 0.10 + (scrollMul - 1) * 0.10);
+
     const roll = Math.random();
 
-    if (roll < pBat) {
+    if (roll < pDog) {
+      spawnDog();
+    } else if (roll < pDog + pBat) {
       spawnBat();
-    } else if (roll < pBat + pFall) {
+    } else if (roll < pDog + pBat + pFall) {
       const tree = trees.find(tr => tr.x > player.x + 200) || trees[0];
       spawnFallCoco(tree.x);
     } else {
       spawnGroundCoco();
     }
 
-    if (scrollMul > 2.1 && Math.random() < 0.18) {
-      spawnGroundCoco();
+    if (scrollMul > 2.1 && Math.random() < 0.12) {
+      // occasional extra ground obstacle
+      (Math.random() < 0.5) ? spawnGroundCoco() : spawnDog();
     }
   }
 
@@ -270,6 +290,11 @@
         const bx = o.x - o.r;
         const by = o.y - o.r;
         if (rectsOverlap(pr.x, pr.y, pr.w, pr.h, bx, by, o.r * 2, o.r * 2)) return true;
+      } else if (o.type === "dog") {
+        // dog hitbox anchored to ground
+        const bx = o.x;                 // left
+        const by = o.y - o.hitH;        // top
+        if (rectsOverlap(pr.x, pr.y, pr.w, pr.h, bx, by, o.hitW, o.hitH)) return true;
       }
     }
 
@@ -299,6 +324,7 @@
     if (player.onGround) runAnimT += dt;
     else jumpAnimT += dt;
 
+    // player physics
     player.vy += gravity * dt;
     player.y += player.vy * dt;
 
@@ -310,21 +336,22 @@
       player.onGround = false;
     }
 
+    // trees
     for (const tr of trees) tr.x -= scroll * dt;
-
     const maxTreeX = Math.max(...trees.map(t => t.x));
     for (const tr of trees) {
       if (tr.x < -40) tr.x = maxTreeX + rand(240, 420);
     }
 
+    // spawn obstacles
     spawnTimer -= dt;
     const spawnEvery = Math.max(0.38, spawnBase / Math.sqrt(scrollMul));
-
     if (spawnTimer <= 0) {
       chooseSpawn();
       spawnTimer = spawnEvery * rand(0.65, 1.1);
     }
 
+    // update obstacles
     for (const o of obs) {
       if (o.type === "groundCoco") {
         o.x -= scroll * dt;
@@ -344,13 +371,19 @@
           o.hitH = 22;
           delete o.vy;
         }
+      } else if (o.type === "dog") {
+        // dog walks a bit faster than the ground scroll
+        o.x -= (scroll * DOG_SPEED_FACTOR) * dt;
+        o.animT += dt;
       }
     }
 
+    // remove offscreen obstacles
     for (let i = obs.length - 1; i >= 0; i--) {
-      if (obs[i].x < -120) obs.splice(i, 1);
+      if (obs[i].x < -160) obs.splice(i, 1);
     }
 
+    // collision
     if (checkCollisions()) {
       running = false;
       gameOver = true;
@@ -384,6 +417,10 @@
     return Math.min(idx, JUMP_FRAMES - 1);
   }
 
+  function getDogFrameIndex(animT) {
+    return Math.floor(animT * DOG_FPS) % DOG_FRAMES;
+  }
+
   function drawPlayerSprite() {
     const drawW = 64;
     const drawH = 64;
@@ -404,6 +441,26 @@
     }
   }
 
+  function drawDog(o) {
+    // If your dog art is 56x56, drawing at 56 or 64 both work.
+    // Start with 64 to match Jared scale, then tune if needed.
+    const drawW = 64;
+    const drawH = 64;
+
+    // anchor feet on groundY
+    const x = o.x - 12;            // slight left offset for nicer placement
+    const y = o.y - drawH + 6;
+
+    const img = sprites.dog[getDogFrameIndex(o.animT)] || null;
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, x, y, drawW, drawH);
+    } else {
+      // fallback hitbox rectangle
+      ctx.fillStyle = "rgba(255, 200, 200, .7)";
+      ctx.fillRect(o.x, o.y - o.hitH, o.hitW, o.hitH);
+    }
+  }
+
   function draw() {
     ctx.clearRect(0, 0, W, H);
 
@@ -421,8 +478,10 @@
     ctx.font = "14px system-ui";
     ctx.fillText("Jared vs Coconut", 26, 31);
 
+    // Jared
     drawPlayerSprite();
 
+    // obstacles
     for (const o of obs) {
       if (o.type === "groundCoco") {
         ctx.fillStyle = "rgba(110,65,30,.95)";
@@ -451,6 +510,8 @@
         ctx.beginPath();
         ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
         ctx.fill();
+      } else if (o.type === "dog") {
+        drawDog(o);
       }
     }
 
@@ -485,7 +546,6 @@
 
     if (running && !gameOver && sprites.ready) update(dt);
     draw();
-
     requestAnimationFrame(loop);
   }
 
