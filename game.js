@@ -63,16 +63,16 @@
   const TREE_DRAW  = 200;
   const TREE_PATH  = "assets/shrubbery/coconut_tree_1.png";
 
+  // Coconut sprite (your new 64x64 pixel art)
   const COCONUT_PATH = "assets/shrubbery/coconut_1.png";
-  const COCONUT_GROUND_DRAW = 28; // visual size for road coconuts
-  const COCONUT_FALL_DRAW   = 24; // visual size for falling coconuts
+  const COCONUT_GROUND_DRAW = 32; // bumped up for 64x64 art
+  const COCONUT_FALL_DRAW   = 28; // bumped up for 64x64 art
 
   const sprites = {
     run:[], jump:[], slide:[], dog:[],
     tree:null,
     coconut:null,
     loaded:0,
-    // +2 = tree + coconut
     total: RUN_FRAMES + JUMP_FRAMES + SLIDE_FRAMES + DOG_FRAMES + 2,
     ready:false,
     firstError:null
@@ -94,6 +94,7 @@
     return i;
   }
 
+  // load sprites
   for (let i=0;i<RUN_FRAMES;i++)   sprites.run.push(load(`assets/jared/run_${i}.png`));
   for (let i=0;i<JUMP_FRAMES;i++)  sprites.jump.push(load(`assets/jared/jump_${i}.png`));
   for (let i=0;i<SLIDE_FRAMES;i++) sprites.slide.push(load(`assets/jared/runslide_${i}.png`));
@@ -219,7 +220,7 @@
   function rand(a,b){ return Math.random()*(b-a)+a; }
 
   function spawnGroundCoco(){
-    // coconut sits on road surface
+    // coconut sits on road surface (collision)
     obs.push({type:"ground", x:W+40, y:groundY-6, w:26, h:22});
   }
 
@@ -302,12 +303,14 @@
     if (player.slideState === "hold") {
       player.slideHoldT += dt;
 
+      // alternate 2 and 3 for tiny motion
       player.slideAccum += dt * 6;
       if (player.slideAccum >= 1) {
         player.slideAccum = 0;
         player.slideFrame = (player.slideFrame === SLIDE_HOLD_FRAMES[0]) ? SLIDE_HOLD_FRAMES[1] : SLIDE_HOLD_FRAMES[0];
       }
 
+      // release OR time cap => out
       if (!player.slideHeld || player.slideHoldT >= SLIDE_HOLD_MAX) {
         player.slideState = "out";
         player.slideFrame = 4;
@@ -347,6 +350,7 @@
 
     updateSlide(dt);
 
+    // physics
     player.vy += gravity * dt;
     player.y += player.vy * dt;
 
@@ -358,12 +362,14 @@
       player.onGround = false;
     }
 
+    // trees
     for (const t of trees) t.x -= scroll * dt;
     const maxX = Math.max(...trees.map(t => t.x));
     for (const t of trees) {
       if (t.x < -TREE_DRAW) t.x = maxX + rand(260, 420);
     }
 
+    // spawning
     spawnTimer -= dt;
     const every = Math.max(0.38, spawnBase / Math.sqrt(scrollMul));
     if (spawnTimer <= 0) {
@@ -371,6 +377,7 @@
       spawnTimer = every;
     }
 
+    // obstacles move
     for (const o of obs) {
       if (o.type === "ground") o.x -= scroll * dt;
 
@@ -394,10 +401,11 @@
       if (o.type === "dog") {
         o.x -= scroll * DOG_SPEED * dt;
         o.animT += dt;
-        o.y = groundY + DOG_Y_OFFSET; // keep pinned (this is why spawn changes won't stick otherwise)
+        o.y = groundY + DOG_Y_OFFSET; // pinned to road
       }
     }
 
+    // cleanup
     for (let i = obs.length - 1; i >= 0; i--) {
       if (obs[i].x < -160) obs.splice(i, 1);
     }
@@ -410,6 +418,16 @@
 
     scoreEl.textContent = Math.floor(score);
     speedEl.textContent = scrollMul.toFixed(1) + "x";
+
+    // taunt (optional)
+    const s = Math.floor(score);
+    let taunt = "Coconut apprentice";
+    if (s >= 200)  taunt = "Tree trainee 🌴";
+    if (s >= 500)  taunt = "Coconut dodger 🥥";
+    if (s >= 900)  taunt = "Bat dodger 🦇";
+    if (s >= 1300) taunt = "Samoa sprint legend ⚡";
+    if (s >= 1800) taunt = "Jared, destroyer of coconuts 👑";
+    tauntEl.textContent = taunt;
   }
 
   /* ---------- drawing ---------- */
@@ -463,7 +481,7 @@
 
   function treeDraw(x){
     const img = sprites.tree;
-    const y = ROAD_TOP - TREE_DRAW + 4; // trees fixed to top side of road
+    const y = ROAD_TOP - TREE_DRAW + 4; // trees on top side of road
     ctx.imageSmoothingEnabled = false;
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, x - TREE_DRAW/2, y, TREE_DRAW, TREE_DRAW);
@@ -499,18 +517,18 @@
   function drawGroundCoconut(o){
     const img = sprites.coconut;
     if (img && img.complete && img.naturalWidth > 0) {
-      // draw small on the road; anchor near its hitbox
+      // pixel crisp
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(
-        img,
-        o.x - 2,
-        o.y - (COCONUT_GROUND_DRAW - o.h),
-        COCONUT_GROUND_DRAW,
-        COCONUT_GROUND_DRAW
-      );
+
+      // Draw it roughly aligned with the hitbox.
+      // If it "floats", increase the +0 to +2/+4.
+      const x = o.x - 2;
+      const y = o.y - (COCONUT_GROUND_DRAW - o.h) + 0;
+
+      ctx.drawImage(img, x, y, COCONUT_GROUND_DRAW, COCONUT_GROUND_DRAW);
+
       ctx.imageSmoothingEnabled = true;
     } else {
-      // fallback
       ctx.fillStyle = "#6b3b1c";
       ctx.fillRect(o.x, o.y, o.w, o.h);
     }
@@ -592,6 +610,7 @@
     tauntEl.textContent="Coconut apprentice";
     scoreEl.textContent="0";
     speedEl.textContent="1.0x";
+    statusEl.textContent = sprites.ready ? "Ready" : "Loading…";
   }
 
   reset();
