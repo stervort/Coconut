@@ -10,20 +10,22 @@
   const W = canvas.width, H = canvas.height;
   const groundY = 245;
   const gravity = 2200;
-  const jumpVel = 820;
+
+  // Jump: cut in half + variable height via "jump cut"
+  const jumpVel = 410;     // was 820
+  const jumpCut = 0.45;    // release early => shorter jump (0.35–0.60 good range)
+
   const baseScroll = 320;
   const speedRamp = 0.045;
   const spawnBase = 0.95;
 
   // --- PNG frame animation setup (matches your filenames)
-  // You said:
-  //   run_0.png ... run_7.png  => 8 frames
-  //   jump_0.png ... jump_8.png => 9 frames
+  // run_0..run_7 => 8 frames, jump_0..jump_8 => 9 frames
   const RUN_FRAMES = 8;
   const JUMP_FRAMES = 9;
 
   const RUN_FPS = 12;
-  const JUMP_FPS = 14; // slightly faster looks nicer for jump arcs
+  const JUMP_FPS = 14;
 
   const sprites = {
     run: [],
@@ -62,7 +64,7 @@
     return img;
   }
 
-  // IMPORTANT: Put these files in: assets/jared/
+  // IMPORTANT: Files must be in: assets/jared/
   for (let i = 0; i < RUN_FRAMES; i++) {
     sprites.run.push(loadFrame(`assets/jared/run_${i}.png`));
   }
@@ -98,7 +100,7 @@
   const obs = [];
   let spawnTimer = 0;
 
-  // Decorative trees (still shapes)
+  // Decorative trees (still shapes for now)
   const trees = [{ x: 650 }, { x: 980 }, { x: 1310 }, { x: 1700 }];
 
   function reset() {
@@ -149,6 +151,13 @@
     }
   }
 
+  // Variable jump height: release early -> smaller jump
+  function endJumpEarly() {
+    if (!player.onGround && player.vy < 0) {
+      player.vy *= jumpCut;
+    }
+  }
+
   function setDuck(v) {
     startIfNeeded();
     if (gameOver || !sprites.ready) return;
@@ -169,9 +178,17 @@
 
   window.addEventListener("keyup", (e) => {
     if (e.code === "ArrowDown") setDuck(false);
+
+    // Jump release => shorter hop
+    if (e.code === "Space" || e.code === "ArrowUp") {
+      endJumpEarly();
+    }
   });
 
   canvas.addEventListener("pointerdown", () => jump());
+  canvas.addEventListener("pointerup", endJumpEarly);
+  canvas.addEventListener("pointercancel", endJumpEarly);
+  canvas.addEventListener("pointerleave", endJumpEarly);
 
   // --- Helpers
   function rand(min, max) { return Math.random() * (max - min) + min; }
@@ -361,13 +378,12 @@
 
   function getJumpFrameIndex() {
     if (JUMP_FRAMES <= 1) return 0;
-    // clamp to last frame so it doesn't loop midair
     const idx = Math.floor(jumpAnimT * JUMP_FPS);
     return Math.min(idx, JUMP_FRAMES - 1);
   }
 
   function drawPlayerSprite() {
-    // Feel free to adjust these if you want bigger/smaller on canvas.
+    // You can tweak these to match your art size
     const drawW = 64;
     const drawH = 64;
 
@@ -412,7 +428,7 @@
     // player
     drawPlayerSprite();
 
-    // obstacles (still shapes)
+    // obstacles (shapes for now)
     for (const o of obs) {
       if (o.type === "groundCoco") {
         ctx.fillStyle = "rgba(110,65,30,.95)";
@@ -451,9 +467,7 @@
       ctx.fillText("Loading PNG frames…", 345, 150);
       ctx.font = "12px system-ui";
       ctx.fillText("Expected: assets/jared/run_0.png and jump_0.png", 265, 172);
-      if (sprites.firstError) {
-        ctx.fillText(`Missing: ${sprites.firstError}`, 265, 190);
-      }
+      if (sprites.firstError) ctx.fillText(`Missing: ${sprites.firstError}`, 265, 190);
     } else if (!running && !gameOver) {
       ctx.fillStyle = "rgba(0,0,0,.35)";
       ctx.fillRect(0, 0, W, H);
@@ -462,6 +476,8 @@
       ctx.fillText("Jared vs Coconut", 360, 130);
       ctx.font = "14px system-ui";
       ctx.fillText("Press Space / ↑ / click to start and jump.", 310, 160);
+      ctx.font = "12px system-ui";
+      ctx.fillText("Tip: tap for short hop, hold for higher jump.", 330, 180);
     } else if (gameOver) {
       ctx.fillStyle = "rgba(0,0,0,.25)";
       ctx.fillRect(0, 0, W, H);
