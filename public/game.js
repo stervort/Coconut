@@ -163,14 +163,16 @@
   const groundY = ROAD_TOP + ROAD_H;
   const gravity = 2200;
 
-  // IMPORTANT: your normal jump setting
   const BASE_JUMP_VEL = 700;
   const BOOST_JUMP_VEL = 900;
-
   const jumpCut = 0.45;
 
   const baseScroll = 320;
-  const speedRamp  = 0.045;
+
+  // ✅ Slower speed ramp (was 0.045)
+  // Lower = slower increase over time
+  const speedRamp  = 0.022;
+
   const spawnBase  = 0.95;
 
   // -------------------------
@@ -218,25 +220,25 @@
   const PINA_PATH    = "assets/items/pina_colada.png";
   const DRINK_SPAWN_CHANCE = 0.10;
 
-  // Inventory
-  const INVENTORY_MAX = 3;
+  // ✅ Inventory capacity bumped to 5
+  const INVENTORY_MAX = 5;
 
   // Effects
   let timeScale = 1.0;
   const SLOWMO_SCALE = 0.65;
   const SLOWMO_DURATION = 6.0;
 
+  const PROTEIN_DURATION = 7.0;
+
   const protein = { active:false, timer:0, immune:false };
   const slowmo  = { active:false, timer:0 };
 
-  // Popups
-  const popups = []; // {text, t, x, y}
-
-  // Bubbles particles for pina
-  const bubbles = []; // {x,y,vx,vy,t,life}
+  // Popups + bubbles
+  const popups = [];
+  const bubbles = [];
 
   // -------------------------
-  // Fix for non-transparent pina PNG (color-key near-white)
+  // Pina white-bg fix (color-key near-white)
   // -------------------------
   function makeColorKeyImage(img, threshold = 245) {
     const c = document.createElement("canvas");
@@ -248,7 +250,6 @@
     const d = data.data;
     for (let i = 0; i < d.length; i += 4) {
       const r = d[i], g = d[i+1], b = d[i+2];
-      // remove near-white pixels
       if (r >= threshold && g >= threshold && b >= threshold) d[i+3] = 0;
     }
     ictx.putImageData(data, 0, 0);
@@ -293,11 +294,7 @@
   sprites.tree = load(TREE_PATH);
   sprites.coconut = load(COCONUT_PATH);
   sprites.protein = load(PROTEIN_PATH);
-
-  // pina: build a transparent-fixed version at load time
-  sprites.pina = load(PINA_PATH, (img) => {
-    sprites.pinaFixed = makeColorKeyImage(img, 245);
-  });
+  sprites.pina = load(PINA_PATH, (img) => { sprites.pinaFixed = makeColorKeyImage(img, 245); });
 
   function updateStatus(){
     if (sprites.firstError) statusEl.textContent = "Missing: " + sprites.firstError;
@@ -331,21 +328,33 @@
 
   let runT=0, jumpT=0;
 
-  const obs=[]; // obstacles + items
+  const obs=[];
   let spawnTimer=0;
-
   const trees=[{x:650},{x:980},{x:1310},{x:1700}];
 
-  const inventory = []; // FIFO
+  const inventory = [];
 
-  function slideHeight(frame){
-    const full = player.h;
-    const low  = 18;
-    if (frame===0 || frame===5) return full;
-    if (frame===1 || frame===4) return (full + low) / 2;
-    return low;
+  // -------------------------
+  // HUD helpers (Power bar)
+  // -------------------------
+  function activePower() {
+    // show whichever is active and has less time left (more urgent)
+    const candidates = [];
+    if (protein.active) candidates.push({ key:"protein", label:"Protein Shake", t:protein.timer, T:PROTEIN_DURATION });
+    if (slowmo.active)  candidates.push({ key:"pina", label:"Pina Colada", t:slowmo.timer, T:SLOWMO_DURATION });
+
+    if (candidates.length === 0) return null;
+    candidates.sort((a,b) => a.t - b.t);
+    return candidates[0];
   }
 
+  function addPopup(text){
+    popups.push({ text, t:0, x: W/2, y: 92 });
+  }
+
+  // -------------------------
+  // Achievement
+  // -------------------------
   function achievementForScore(s) {
     if (s >= 1800) return "Jared, destroyer of coconuts 👑";
     if (s >= 1300) return "Samoa sprint legend ⚡";
@@ -353,6 +362,14 @@
     if (s >= 500)  return "Coconut dodger 🥥";
     if (s >= 200)  return "Tree trainee 🌴";
     return "Coconut apprentice";
+  }
+
+  function slideHeight(frame){
+    const full = player.h;
+    const low  = 18;
+    if (frame===0 || frame===5) return full;
+    if (frame===1 || frame===4) return (full + low) / 2;
+    return low;
   }
 
   // -------------------------
@@ -397,30 +414,19 @@
   function beginSlide(){
     start();
     if (gameOver) return;
-
     player.slideHeld = true;
-
     if (!player.onGround) { player.slideQueued = true; return; }
     startSlideNow();
   }
 
   function releaseSlide(){
     player.slideHeld = false;
-
-    if (!player.onGround && player.slideState === "none") {
-      player.slideQueued = false;
-      return;
-    }
-
+    if (!player.onGround && player.slideState === "none") { player.slideQueued = false; return; }
     if (player.slideState === "hold" || player.slideState === "in") {
       player.slideState = "out";
       player.slideFrame = Math.max(player.slideFrame, 4);
       player.slideAccum = 0;
     }
-  }
-
-  function addPopup(text){
-    popups.push({ text, t:0, x: W/2, y: 92 });
   }
 
   function useInventory(){
@@ -431,7 +437,7 @@
     const item = inventory.shift();
     if (item === "protein") {
       protein.active = true;
-      protein.timer = 7.0;
+      protein.timer = PROTEIN_DURATION;
       protein.immune = true;
       addPopup("Protein Shake!");
     } else if (item === "pina") {
@@ -450,11 +456,9 @@
     addPopup("YEET!");
   }
 
-  // FIXED: do NOT preventDefault for everything when overlay is open.
-  // Only block the game control keys so typing works.
   window.addEventListener("keydown", (e) => {
     if (overlayOpen()) {
-      const block = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+      const block = ["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"];
       if (block.includes(e.code)) e.preventDefault();
       return;
     }
@@ -489,8 +493,7 @@
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
   // -------------------------
-  // Spawning / movement / collision etc.
-  // (same as your previous version – only changed texts + pina rendering)
+  // Spawning
   // -------------------------
   function rand(a,b){ return Math.random()*(b-a)+a; }
 
@@ -543,6 +546,9 @@
     } else spawnGroundCoco();
   }
 
+  // -------------------------
+  // Collision
+  // -------------------------
   function playerRect(){
     let h = player.h;
     if (player.slideState !== "none") h = slideHeight(player.slideFrame);
@@ -555,7 +561,6 @@
 
   function hitObstacleOrPickup(){
     const pr = playerRect();
-
     for(const o of obs){
       if (o.kicked) continue;
 
@@ -579,6 +584,9 @@
     o.rot = 0;
   }
 
+  // -------------------------
+  // Slide state machine
+  // -------------------------
   function updateSlide(dt){
     if (player.slideState === "none") return;
 
@@ -603,13 +611,11 @@
 
     if (player.slideState === "hold") {
       player.slideHoldT += dt;
-
       player.slideAccum += dt * 6;
       if (player.slideAccum >= 1) {
         player.slideAccum = 0;
         player.slideFrame = (player.slideFrame === 2) ? 3 : 2;
       }
-
       if (!player.slideHeld || player.slideHoldT >= SLIDE_HOLD_MAX) {
         player.slideState = "out";
         player.slideFrame = 4;
@@ -629,12 +635,14 @@
         player.slideFrame = 0;
         player.slideAccum = 0;
         player.slideHoldT = 0;
-
         if (player.slideHeld && player.onGround) startSlideNow();
       }
     }
   }
 
+  // -------------------------
+  // Game over -> overlay
+  // -------------------------
   async function handleGameOver(){
     if (gameOverHandled) return;
     gameOverHandled = true;
@@ -650,14 +658,14 @@
     showNameOverlay(finalScore, ach);
   }
 
-  const popups = [];
-  const bubbles = [];
-
+  // -------------------------
+  // Update
+  // -------------------------
   function update(dtRaw){
     time += dtRaw;
     const dt = dtRaw * timeScale;
 
-    // effect timers in real time
+    // timers in real-time
     if (slowmo.active) {
       slowmo.timer -= dtRaw;
       if (slowmo.timer <= 0) {
@@ -673,6 +681,7 @@
       }
     }
 
+    // speed ramp slower now
     scrollMul = 1 + time * speedRamp;
     const scroll = baseScroll * scrollMul;
     const scrollStep = scroll * dt;
@@ -693,7 +702,6 @@
       player.y = groundY;
       player.vy = 0;
       player.onGround = true;
-
       if (wasInAir && player.slideState === "none" && (player.slideQueued || player.slideHeld)) {
         player.slideQueued = false;
         startSlideNow();
@@ -745,17 +753,41 @@
         o.animT += dt;
         o.y = groundY + DOG_Y_OFFSET;
       }
-      if (o.type === "drink_protein" || o.type === "drink_pina") {
-        o.x -= scrollStep;
-      }
+      if (o.type === "drink_protein" || o.type === "drink_pina") o.x -= scrollStep;
     }
 
+    // bubbles
+    if (slowmo.active && Math.random() < 0.45) {
+      bubbles.push({
+        x: player.x + 6 + rand(-6, 10),
+        y: (player.y - JARED_DRAW + 12) + rand(-6, 6),
+        vx: rand(-10, 10),
+        vy: rand(-40, -70),
+        t: 0,
+        life: rand(0.6, 1.2)
+      });
+    }
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      const b = bubbles[i];
+      b.t += dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.vy += 30 * dt;
+      if (b.t > b.life) bubbles.splice(i, 1);
+    }
+
+    // popups age
     for (let i = popups.length - 1; i >= 0; i--) {
       popups[i].t += dtRaw;
       if (popups[i].t > 1.2) popups.splice(i, 1);
     }
 
-    // pickup / hit
+    // cleanup
+    for (let i = obs.length - 1; i >= 0; i--) {
+      if (obs[i].x < -240 || obs[i].x > W + 1200 || obs[i].y > H + 400) obs.splice(i, 1);
+    }
+
+    // collision
     const hit = hitObstacleOrPickup();
     if (hit) {
       if (hit.kind === "drink") {
@@ -787,6 +819,9 @@
     tauntEl.textContent = achievementForScore(Math.floor(score));
   }
 
+  // -------------------------
+  // Drawing
+  // -------------------------
   function drawBackground(){
     const g = ctx.createLinearGradient(0,0,0,SKY_END);
     g.addColorStop(0,"#6ad4ff");
@@ -797,11 +832,30 @@
     ctx.fillStyle = "#1e8cc4";
     ctx.fillRect(0, SKY_END, W, OCEAN_END - SKY_END);
 
+    // wave pixels
+    const old = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;
+    const tile = 8;
+    const drift = Math.floor((time * 22) % tile);
+    for (let row=0; row<2; row++){
+      const y = SKY_END + 18 + row * 18;
+      for (let x=-tile; x<W+tile; x+=tile){
+        const phase = ((x + drift) / tile) | 0;
+        if (phase % 5 === 0) {
+          ctx.fillStyle = "rgba(220,255,255,0.35)";
+          ctx.fillRect(x + drift + 2, y, 3, 2);
+        }
+      }
+    }
+    ctx.imageSmoothingEnabled = old;
+
     ctx.fillStyle = "#f0d79a";
     ctx.fillRect(0, OCEAN_END, W, SAND_END - OCEAN_END);
 
     ctx.fillStyle = "#2b2b2b";
     ctx.fillRect(0, ROAD_TOP, W, ROAD_H);
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    for (let x = 0; x < W; x += 40) ctx.fillRect(x + 10, ROAD_TOP + ROAD_H/2 - 1, 18, 2);
 
     ctx.fillStyle = "#2f9b57";
     ctx.fillRect(0, GRASS_TOP, W, H - GRASS_TOP);
@@ -827,30 +881,233 @@
   function drawPlayer(){
     const img = jaredFrame();
     if (!img || !img.complete || img.naturalWidth === 0) return;
+
     ctx.drawImage(img, player.x - 14, player.y - JARED_DRAW + 6, JARED_DRAW, JARED_DRAW);
+
+    if (slowmo.active) {
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = "#4cff7a";
+      ctx.fillRect(player.x - 18, player.y - JARED_DRAW + 4, 44, 52);
+      ctx.restore();
+    }
+    if (protein.immune) {
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = "#ffd84a";
+      ctx.beginPath();
+      ctx.arc(player.x + 6, player.y - 34, 16, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawBubbles(){
+    if (!slowmo.active) return;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.imageSmoothingEnabled = false;
+    for (const b of bubbles) {
+      const r = 2 + (b.t / b.life) * 2;
+      ctx.strokeStyle = "rgba(220,255,255,0.85)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, r, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawGroundCoconut(o){
+    const img = sprites.coconut;
+    ctx.imageSmoothingEnabled = false;
+    if (img && img.complete && img.naturalWidth > 0) {
+      const x = o.x - 2;
+      const y = o.y - (COCONUT_GROUND_DRAW - o.h);
+      ctx.drawImage(img, x, y, COCONUT_GROUND_DRAW, COCONUT_GROUND_DRAW);
+    } else {
+      ctx.fillStyle = "#6b3b1c";
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+    }
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  function drawFallingCoconut(o){
+    const img = sprites.coconut;
+    ctx.imageSmoothingEnabled = false;
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, o.x - COCONUT_FALL_DRAW/2, o.y - COCONUT_FALL_DRAW/2, COCONUT_FALL_DRAW, COCONUT_FALL_DRAW);
+    } else {
+      ctx.fillStyle="#6b3b1c";
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  function drawDog(o){
+    const f = Math.floor((o.animT || 0) * DOG_FPS) % DOG_FRAMES;
+    const img = sprites.dog[f];
+    if (!img || !img.complete || img.naturalWidth === 0) return;
+    ctx.drawImage(img, o.x - 14, o.y - DOG_DRAW + 6, DOG_DRAW, DOG_DRAW);
+  }
+
+  function drawBat(o){
+    const img = sprites.bat[Math.floor((o.animT || 0) * BAT_FPS) % BAT_FRAMES];
+    if (!img || !img.complete || img.naturalWidth === 0) return;
+    ctx.imageSmoothingEnabled = false;
+    const dx = o.x - (BAT_DRAW - o.hitW)/2;
+    const dy = (o.y - o.hitH) - (BAT_DRAW - o.hitH)/2;
+    ctx.drawImage(img, dx, dy, BAT_DRAW, BAT_DRAW);
+    ctx.imageSmoothingEnabled = true;
   }
 
   function drawDrink(o){
-    // Use the fixed (transparent) pina version if available
     const img = (o.type === "drink_protein") ? sprites.protein : (sprites.pinaFixed || sprites.pina);
     ctx.imageSmoothingEnabled = false;
     const x = o.x - 4;
     const y = o.y - (ITEM_DRAW - o.h) - 6;
-    if (img && img.complete && img.naturalWidth > 0) ctx.drawImage(img, x, y, ITEM_DRAW, ITEM_DRAW);
-    else {
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, x, y, ITEM_DRAW, ITEM_DRAW);
+    } else {
       ctx.fillStyle = (o.type === "drink_protein") ? "#ffd84a" : "#ff7ad9";
       ctx.fillRect(x+8, y+6, 16, 20);
     }
     ctx.imageSmoothingEnabled = true;
   }
 
+  function drawPopups(){
+    for (const p of popups) {
+      const t = p.t;
+      const alpha = Math.max(0, 1 - t / 1.2);
+      const scale = 1 + Math.sin(Math.min(1, t) * Math.PI) * 0.12;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(p.x, p.y);
+      ctx.scale(scale, scale);
+
+      ctx.font = "bold 28px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = "rgba(0,0,0,0.65)";
+      ctx.strokeText(p.text, 0, 0);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(p.text, 0, 0);
+
+      ctx.restore();
+    }
+  }
+
+  // ✅ Inventory bar grows based on INVENTORY_MAX
+  function drawInventory(){
+    const pad = 10;
+    const iconSize = 26;
+    const iconGap = 6;
+    const labelW = 112;
+
+    const width = 8 + labelW + (INVENTORY_MAX * (iconSize + iconGap)) + 10;
+    const x0 = 8;
+    const y0 = H - 44;
+
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(x0, y0, width, 36);
+
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff";
+    ctx.fillText("Inventory:", x0 + 10, y0 + 14);
+
+    let x = x0 + labelW;
+    for (let i = 0; i < INVENTORY_MAX; i++) {
+      ctx.fillStyle = "rgba(255,255,255,0.10)";
+      ctx.fillRect(x, y0 + 6, iconSize, iconSize);
+
+      const item = inventory[i];
+      if (item) {
+        const img = item === "protein" ? sprites.protein : (sprites.pinaFixed || sprites.pina);
+        if (img && img.complete && img.naturalWidth > 0) {
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(img, x - 3, y0 + 3, 32, 32);
+          ctx.imageSmoothingEnabled = true;
+        } else {
+          ctx.fillStyle = item === "protein" ? "#ffd84a" : "#ff7ad9";
+          ctx.fillRect(x + 8, y0 + 10, 10, 14);
+        }
+      }
+
+      x += iconSize + iconGap;
+    }
+
+    ctx.restore();
+  }
+
+  // ✅ Power bar shows active effect + countdown
+  function drawPowerBar(){
+    const p = activePower();
+    if (!p) return;
+
+    const x = 8;
+    const y = H - 82;
+    const w = 320;
+    const h = 16;
+
+    const ratio = Math.max(0, Math.min(1, p.t / p.T));
+
+    ctx.save();
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(x, y, w, 30);
+
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`Power: ${p.label}`, x + 10, y + 10);
+
+    // bar background
+    ctx.fillStyle = "rgba(255,255,255,0.10)";
+    ctx.fillRect(x + 10, y + 16, w - 20, h);
+
+    // bar fill (no fixed colors requested, but this is UI-ish; keeping subtle)
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.fillRect(x + 10, y + 16, (w - 20) * ratio, h);
+
+    ctx.restore();
+  }
+
   function draw(){
     ctx.clearRect(0,0,W,H);
     drawBackground();
+
     for (const t of trees) treeDraw(t.x);
+
     drawPlayer();
+    drawBubbles();
+
     for (const o of obs) {
-      if (o.type==="drink_protein" || o.type==="drink_pina") drawDrink(o);
+      if (o.type==="ground") drawGroundCoconut(o);
+      else if (o.type==="fall") drawFallingCoconut(o);
+      else if (o.type==="dog") drawDog(o);
+      else if (o.type==="bat") drawBat(o);
+      else if (o.type==="drink_protein" || o.type==="drink_pina") drawDrink(o);
+    }
+
+    drawPopups();
+    drawPowerBar();
+    drawInventory();
+
+    if(!sprites.ready){
+      ctx.fillStyle="rgba(0,0,0,.4)";
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle="#fff";
+      ctx.font="16px sans-serif";
+      ctx.fillText("Loading…", 410, 150);
     }
   }
 
@@ -868,6 +1125,8 @@
     gameOverHandled=false;
 
     inventory.length = 0;
+    popups.length = 0;
+    bubbles.length = 0;
 
     protein.active=false; protein.timer=0; protein.immune=false;
     slowmo.active=false; slowmo.timer=0;
@@ -891,6 +1150,52 @@
     statusEl.textContent = sprites.ready ? "Ready" : "Loading…";
   }
 
+  // Minimal missing parts (kick + collision + updateSlide + handleGameOver) are already above
+  // but we still need "kicked smash" behavior as in your previous build.
+  // To keep this file self-contained, add back that logic:
+
+  function kickObstacle(o){
+    o.kicked = true;
+    o.vx = 1100;
+    o.vy = -250 - Math.random()*200;
+    o.spin = (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random()*6);
+    o.rot = 0;
+  }
+
+  function handleHit(hit){
+    if (hit.kind === "drink") {
+      const idx = obs.indexOf(hit.obj);
+      if (idx >= 0) obs.splice(idx, 1);
+
+      if (inventory.length < INVENTORY_MAX) {
+        inventory.push(hit.obj.type === "drink_protein" ? "protein" : "pina");
+        addPopup(hit.obj.type === "drink_protein" ? "Got Protein Shake!" : "Got Pina Colada!");
+      } else {
+        addPopup("Inventory Full!");
+      }
+    } else {
+      if (protein.immune) {
+        kickObstacle(hit.obj);
+        addPopup("SMASH!");
+        score += 25;
+      } else {
+        running = false;
+        gameOver = true;
+        statusEl.textContent = "Game over – press R";
+        handleGameOver();
+      }
+    }
+  }
+
+  // Patch collision usage into update
+  const _update = update;
+  update = function(dtRaw){
+    _update(dtRaw);
+    const hit = hitObstacleOrPickup();
+    if (hit) handleHit(hit);
+  };
+
   reset();
   requestAnimationFrame(loop);
+
 })();
