@@ -1022,7 +1022,7 @@
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#fff";
-    ctx.fillText("Inventory:", x0 + 10, y0 + 14);
+    ctx.fillText("Inventory (FIFO):", x0 + 10, y0 + 14);
 
     let x = x0 + labelW;
     for (let i = 0; i < INVENTORY_MAX; i++) {
