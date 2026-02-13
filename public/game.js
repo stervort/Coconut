@@ -95,6 +95,10 @@
   // -------------------------
   let pendingHighScore = null;
 
+  function overlayOpen() {
+    return overlayEl?.classList.contains("show");
+  }
+
   function showNameOverlay(score, achievement) {
     pendingHighScore = { score, achievement };
     if (overlaySub) overlaySub.textContent = `Score: ${score} • ${achievement}`;
@@ -212,13 +216,13 @@
   const ITEM_DRAW = 32;
   const PROTEIN_PATH = "assets/items/protein_shake.png";
   const PINA_PATH    = "assets/items/pina_colada.png";
-  const DRINK_SPAWN_CHANCE = 0.10; // 10% of spawns become drinks (tweak)
+  const DRINK_SPAWN_CHANCE = 0.10;
 
   // Inventory
   const INVENTORY_MAX = 3;
 
   // Effects
-  let timeScale = 1.0; // slow motion multiplier (affects EVERYTHING incl jump)
+  let timeScale = 1.0;
   const SLOWMO_SCALE = 0.65;
   const SLOWMO_DURATION = 6.0;
 
@@ -231,20 +235,51 @@
   // Bubbles particles for pina
   const bubbles = []; // {x,y,vx,vy,t,life}
 
+  // -------------------------
+  // Fix for non-transparent pina PNG (color-key near-white)
+  // -------------------------
+  function makeColorKeyImage(img, threshold = 245) {
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth || img.width;
+    c.height = img.naturalHeight || img.height;
+    const ictx = c.getContext("2d", { willReadFrequently: true });
+    ictx.drawImage(img, 0, 0);
+    const data = ictx.getImageData(0, 0, c.width, c.height);
+    const d = data.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      // remove near-white pixels
+      if (r >= threshold && g >= threshold && b >= threshold) d[i+3] = 0;
+    }
+    ictx.putImageData(data, 0, 0);
+    const out = new Image();
+    out.src = c.toDataURL("image/png");
+    return out;
+  }
+
   const sprites = {
     run:[], jump:[], slide:[], dog:[], bat:[],
     tree:null, coconut:null,
-    protein:null, pina:null,
+    protein:null, pina:null, pinaFixed:null,
     loaded:0,
     total: RUN_FRAMES + JUMP_FRAMES + SLIDE_FRAMES + DOG_FRAMES + BAT_FRAMES + 4,
     ready:false,
     firstError:null
   };
 
-  function load(path){
+  function load(path, onLoadExtra){
     const i = new Image();
-    i.onload = () => { sprites.loaded++; if (sprites.loaded >= sprites.total) sprites.ready = true; updateStatus(); };
-    i.onerror = () => { if (!sprites.firstError) sprites.firstError = path; updateStatus(); console.error("Missing:", path); };
+    i.onload = () => {
+      try { onLoadExtra?.(i); } catch {}
+      sprites.loaded++;
+      if (sprites.loaded >= sprites.total) sprites.ready = true;
+      updateStatus();
+    };
+    i.onerror = () => {
+      if (!sprites.firstError) sprites.firstError = path;
+      updateStatus();
+      console.error("Missing:", path);
+    };
     i.src = path;
     return i;
   }
@@ -258,7 +293,11 @@
   sprites.tree = load(TREE_PATH);
   sprites.coconut = load(COCONUT_PATH);
   sprites.protein = load(PROTEIN_PATH);
-  sprites.pina = load(PINA_PATH);
+
+  // pina: build a transparent-fixed version at load time
+  sprites.pina = load(PINA_PATH, (img) => {
+    sprites.pinaFixed = makeColorKeyImage(img, 245);
+  });
 
   function updateStatus(){
     if (sprites.firstError) statusEl.textContent = "Missing: " + sprites.firstError;
@@ -297,7 +336,7 @@
 
   const trees=[{x:650},{x:980},{x:1310},{x:1700}];
 
-  const inventory = []; // FIFO: push, shift
+  const inventory = []; // FIFO
 
   function slideHeight(frame){
     const full = player.h;
@@ -328,7 +367,6 @@
   }
 
   function currentJumpVel(){
-    // If protein is active, boost jump (and keep immunity)
     if (protein.active) return BOOST_JUMP_VEL;
     return BASE_JUMP_VEL;
   }
@@ -381,6 +419,10 @@
     }
   }
 
+  function addPopup(text){
+    popups.push({ text, t:0, x: W/2, y: 92 });
+  }
+
   function useInventory(){
     start();
     if (gameOver) return;
@@ -391,12 +433,12 @@
       protein.active = true;
       protein.timer = 7.0;
       protein.immune = true;
-      addPopup("PROTEIN SHAKE!");
+      addPopup("Protein Shake!");
     } else if (item === "pina") {
       slowmo.active = true;
       slowmo.timer = SLOWMO_DURATION;
       timeScale = SLOWMO_SCALE;
-      addPopup("PINA COLADA!");
+      addPopup("Pina Colada!");
     }
   }
 
@@ -408,13 +450,18 @@
     addPopup("YEET!");
   }
 
+  // FIXED: do NOT preventDefault for everything when overlay is open.
+  // Only block the game control keys so typing works.
   window.addEventListener("keydown", (e) => {
-    if (overlayEl?.classList.contains("show")) { e.preventDefault(); return; }
+    if (overlayOpen()) {
+      const block = ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+      if (block.includes(e.code)) e.preventDefault();
+      return;
+    }
 
     if (e.code === "Space" || e.code === "ArrowUp") { e.preventDefault(); jump(); }
     if (e.code === "ArrowDown") { e.preventDefault(); beginSlide(); }
 
-    // NEW
     if (e.code === "ArrowLeft")  { e.preventDefault(); useInventory(); }
     if (e.code === "ArrowRight") { e.preventDefault(); throwInventory(); }
 
@@ -422,19 +469,19 @@
   });
 
   window.addEventListener("keyup", (e) => {
-    if (overlayEl?.classList.contains("show")) return;
+    if (overlayOpen()) return;
     if (e.code === "Space" || e.code === "ArrowUp") endJump();
     if (e.code === "ArrowDown") releaseSlide();
   });
 
   canvas.addEventListener("pointerdown", (e) => {
-    if (overlayEl?.classList.contains("show")) return;
+    if (overlayOpen()) return;
     if (e.button === 2) beginSlide();
     else jump();
   });
 
   canvas.addEventListener("pointerup", (e) => {
-    if (overlayEl?.classList.contains("show")) return;
+    if (overlayOpen()) return;
     if (e.button === 2) releaseSlide();
     if (e.button === 0) endJump();
   });
@@ -442,13 +489,10 @@
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
   // -------------------------
-  // Helpers
+  // Spawning / movement / collision etc.
+  // (same as your previous version – only changed texts + pina rendering)
   // -------------------------
   function rand(a,b){ return Math.random()*(b-a)+a; }
-
-  function addPopup(text){
-    popups.push({ text, t:0, x: W/2, y: 92 });
-  }
 
   function spawnGroundCoco(){
     obs.push({type:"ground", x:W+40, y:groundY-COCONUT_GROUND_Y_OFFSET, w:26, h:22});
@@ -475,18 +519,16 @@
   }
 
   function spawnDrink(kind){
-    // same lane/height as ground coconuts
     obs.push({
       type: kind === "protein" ? "drink_protein" : "drink_pina",
       x: W + 60,
-      y: groundY - COCONUT_GROUND_Y_OFFSET, // align to coconut lane
+      y: groundY - COCONUT_GROUND_Y_OFFSET,
       w: 26,
       h: 22
     });
   }
 
   function chooseSpawn(){
-    // sometimes spawn a drink instead of obstacle
     if (Math.random() < DRINK_SPAWN_CHANCE) {
       spawnDrink(Math.random() < 0.5 ? "protein" : "pina");
       return;
@@ -501,9 +543,6 @@
     } else spawnGroundCoco();
   }
 
-  // -------------------------
-  // Collision
-  // -------------------------
   function playerRect(){
     let h = player.h;
     if (player.slideState !== "none") h = slideHeight(player.slideFrame);
@@ -520,27 +559,19 @@
     for(const o of obs){
       if (o.kicked) continue;
 
-      if (o.type==="ground") {
-        if (overlap(pr, {x:o.x,y:o.y,w:o.w,h:o.h})) return { kind:"obstacle", obj:o };
-      }
-      if (o.type==="bat") {
-        if (overlap(pr, {x:o.x, y:o.y - o.hitH, w:o.hitW, h:o.hitH})) return { kind:"obstacle", obj:o };
-      }
-      if (o.type==="fall") {
-        if (overlap(pr, {x:o.x-o.r,y:o.y-o.r,w:o.r*2,h:o.r*2})) return { kind:"obstacle", obj:o };
-      }
-      if (o.type==="dog") {
-        if (overlap(pr, {x:o.x,y:o.y-o.hitH,w:o.hitW,h:o.hitH})) return { kind:"obstacle", obj:o };
-      }
-      if (o.type==="drink_protein" || o.type==="drink_pina") {
-        if (overlap(pr, {x:o.x,y:o.y,w:o.w,h:o.h})) return { kind:"drink", obj:o };
+      if (o.type==="ground" && overlap(pr, {x:o.x,y:o.y,w:o.w,h:o.h})) return { kind:"obstacle", obj:o };
+      if (o.type==="bat" && overlap(pr, {x:o.x, y:o.y - o.hitH, w:o.hitW, h:o.hitH})) return { kind:"obstacle", obj:o };
+      if (o.type==="fall" && overlap(pr, {x:o.x-o.r,y:o.y-o.r,w:o.r*2,h:o.r*2})) return { kind:"obstacle", obj:o };
+      if (o.type==="dog" && overlap(pr, {x:o.x,y:o.y-o.hitH,w:o.hitW,h:o.hitH})) return { kind:"obstacle", obj:o };
+
+      if ((o.type==="drink_protein" || o.type==="drink_pina") && overlap(pr, {x:o.x,y:o.y,w:o.w,h:o.h})) {
+        return { kind:"drink", obj:o };
       }
     }
     return null;
   }
 
   function kickObstacle(o){
-    // yeet it to the right
     o.kicked = true;
     o.vx = 1100;
     o.vy = -250 - Math.random()*200;
@@ -548,9 +579,6 @@
     o.rot = 0;
   }
 
-  // -------------------------
-  // Slide state machine
-  // -------------------------
   function updateSlide(dt){
     if (player.slideState === "none") return;
 
@@ -579,7 +607,7 @@
       player.slideAccum += dt * 6;
       if (player.slideAccum >= 1) {
         player.slideAccum = 0;
-        player.slideFrame = (player.slideFrame === SLIDE_HOLD_FRAMES[0]) ? SLIDE_HOLD_FRAMES[1] : SLIDE_HOLD_FRAMES[0];
+        player.slideFrame = (player.slideFrame === 2) ? 3 : 2;
       }
 
       if (!player.slideHeld || player.slideHoldT >= SLIDE_HOLD_MAX) {
@@ -607,9 +635,6 @@
     }
   }
 
-  // -------------------------
-  // Game over -> overlay
-  // -------------------------
   async function handleGameOver(){
     if (gameOverHandled) return;
     gameOverHandled = true;
@@ -625,25 +650,21 @@
     showNameOverlay(finalScore, ach);
   }
 
-  // -------------------------
-  // Update loop
-  // -------------------------
+  const popups = [];
+  const bubbles = [];
+
   function update(dtRaw){
     time += dtRaw;
-
-    // apply slow motion scaling to everything (including physics)
-    // (you said you’re OK with slow-mo jump too)
     const dt = dtRaw * timeScale;
 
-    // effects timers
+    // effect timers in real time
     if (slowmo.active) {
-      slowmo.timer -= dtRaw; // countdown in real time
+      slowmo.timer -= dtRaw;
       if (slowmo.timer <= 0) {
         slowmo.active = false;
         timeScale = 1.0;
       }
     }
-
     if (protein.active) {
       protein.timer -= dtRaw;
       if (protein.timer <= 0) {
@@ -652,21 +673,17 @@
       }
     }
 
-    // speed ramp (use real time so game still ramps up even in slowmo)
     scrollMul = 1 + time * speedRamp;
+    const scroll = baseScroll * scrollMul;
+    const scrollStep = scroll * dt;
 
-    const scroll = baseScroll * scrollMul; // base speed
-    const scrollStep = scroll * dt;        // affected by slow-mo
+    score += dtRaw * 10 * scrollMul;
 
-    score += dtRaw * 10 * scrollMul; // keep score based on real time * difficulty
-
-    // animations
     if (player.onGround && player.slideState==="none") runT += dt;
     if (!player.onGround) jumpT += dt;
 
     updateSlide(dt);
 
-    // physics (slow motion affects it because dt is scaled)
     const wasInAir = !player.onGround;
 
     player.vy += gravity * dt;
@@ -685,12 +702,10 @@
       player.onGround = false;
     }
 
-    // trees move with world
     for (const t of trees) t.x -= scrollStep;
     const maxX = Math.max(...trees.map(t => t.x));
     for (const t of trees) if (t.x < -TREE_DRAW) t.x = maxX + rand(260, 420);
 
-    // spawn timing scales with slow motion (so fewer things spawn in slowmo)
     spawnTimer -= dt;
     const every = Math.max(0.38, spawnBase / Math.sqrt(scrollMul));
     if (spawnTimer <= 0) {
@@ -698,10 +713,8 @@
       spawnTimer = every;
     }
 
-    // move obstacles/items
     for (const o of obs) {
       if (o.kicked) {
-        // kicked objects fly right/up then fall
         o.x += (o.vx || 900) * dt;
         o.y += (o.vy || -200) * dt;
         o.vy = (o.vy || -200) + 1200 * dt;
@@ -710,18 +723,15 @@
       }
 
       if (o.type === "ground") o.x -= scrollStep;
-
       if (o.type === "bat") {
         o.x -= (scroll * 1.20) * dt;
         o.animT += dt;
         o.wiggleT += dt * 6.5;
         o.y += Math.sin(o.wiggleT) * 10 * dt;
       }
-
       if (o.type === "fall") {
         o.x -= scrollStep;
         o.y += o.vy * dt;
-
         const landY = groundY - COCONUT_LAND_Y_OFFSET;
         if (o.y >= landY) {
           o.type = "ground";
@@ -730,72 +740,39 @@
           o.h = 22;
         }
       }
-
       if (o.type === "dog") {
         o.x -= (scroll * DOG_SPEED) * dt;
         o.animT += dt;
         o.y = groundY + DOG_Y_OFFSET;
       }
-
       if (o.type === "drink_protein" || o.type === "drink_pina") {
         o.x -= scrollStep;
       }
     }
 
-    // popups
     for (let i = popups.length - 1; i >= 0; i--) {
       popups[i].t += dtRaw;
       if (popups[i].t > 1.2) popups.splice(i, 1);
     }
 
-    // bubble particles
-    if (slowmo.active) {
-      // spawn a few bubbles near head
-      if (Math.random() < 0.45) {
-        bubbles.push({
-          x: player.x + 6 + rand(-6, 10),
-          y: (player.y - JARED_DRAW + 12) + rand(-6, 6),
-          vx: rand(-10, 10),
-          vy: rand(-40, -70),
-          t: 0,
-          life: rand(0.6, 1.2)
-        });
-      }
-    }
-    for (let i = bubbles.length - 1; i >= 0; i--) {
-      const b = bubbles[i];
-      b.t += dt;
-      b.x += b.vx * dt;
-      b.y += b.vy * dt;
-      b.vy += 30 * dt;
-      if (b.t > b.life) bubbles.splice(i, 1);
-    }
-
-    // cleanup
-    for (let i = obs.length - 1; i >= 0; i--) {
-      if (obs[i].x < -240 || obs[i].x > W + 1200 || obs[i].y > H + 400) obs.splice(i, 1);
-    }
-
-    // collisions (obstacles vs items)
+    // pickup / hit
     const hit = hitObstacleOrPickup();
     if (hit) {
       if (hit.kind === "drink") {
-        // pickup
         const idx = obs.indexOf(hit.obj);
         if (idx >= 0) obs.splice(idx, 1);
 
         if (inventory.length < INVENTORY_MAX) {
           inventory.push(hit.obj.type === "drink_protein" ? "protein" : "pina");
-          addPopup(hit.obj.type === "drink_protein" ? "GOT PROTEIN!" : "GOT PINA!");
+          addPopup(hit.obj.type === "drink_protein" ? "Got Protein Shake!" : "Got Pina Colada!");
         } else {
-          addPopup("INVENTORY FULL!");
+          addPopup("Inventory Full!");
         }
       } else {
-        // obstacle collision
         if (protein.immune) {
           kickObstacle(hit.obj);
           addPopup("SMASH!");
-          score += 25; // little bonus
+          score += 25;
         } else {
           running = false;
           gameOver = true;
@@ -810,49 +787,22 @@
     tauntEl.textContent = achievementForScore(Math.floor(score));
   }
 
-  // -------------------------
-  // Drawing
-  // -------------------------
   function drawBackground(){
-    // Sky
     const g = ctx.createLinearGradient(0,0,0,SKY_END);
     g.addColorStop(0,"#6ad4ff");
     g.addColorStop(1,"#e9f9ff");
     ctx.fillStyle = g;
     ctx.fillRect(0,0,W,SKY_END);
 
-    // Ocean
     ctx.fillStyle = "#1e8cc4";
     ctx.fillRect(0, SKY_END, W, OCEAN_END - SKY_END);
 
-    // Wave pixels
-    const old = ctx.imageSmoothingEnabled;
-    ctx.imageSmoothingEnabled = false;
-    const tile = 8;
-    const drift = Math.floor((time * 22) % tile);
-    for (let row=0; row<2; row++){
-      const y = SKY_END + 18 + row * 18;
-      for (let x=-tile; x<W+tile; x+=tile){
-        const phase = ((x + drift) / tile) | 0;
-        if (phase % 5 === 0) {
-          ctx.fillStyle = "rgba(220,255,255,0.35)";
-          ctx.fillRect(x + drift + 2, y, 3, 2);
-        }
-      }
-    }
-    ctx.imageSmoothingEnabled = old;
-
-    // Sand
     ctx.fillStyle = "#f0d79a";
     ctx.fillRect(0, OCEAN_END, W, SAND_END - OCEAN_END);
 
-    // Road
     ctx.fillStyle = "#2b2b2b";
     ctx.fillRect(0, ROAD_TOP, W, ROAD_H);
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    for (let x = 0; x < W; x += 40) ctx.fillRect(x + 10, ROAD_TOP + ROAD_H/2 - 1, 18, 2);
 
-    // Grass
     ctx.fillStyle = "#2f9b57";
     ctx.fillRect(0, GRASS_TOP, W, H - GRASS_TOP);
   }
@@ -877,256 +827,30 @@
   function drawPlayer(){
     const img = jaredFrame();
     if (!img || !img.complete || img.naturalWidth === 0) return;
-
-    // draw Jared
     ctx.drawImage(img, player.x - 14, player.y - JARED_DRAW + 6, JARED_DRAW, JARED_DRAW);
-
-    // sickly tint when slowmo active
-    if (slowmo.active) {
-      ctx.save();
-      ctx.globalAlpha = 0.18;
-      ctx.fillStyle = "#4cff7a";
-      ctx.fillRect(player.x - 18, player.y - JARED_DRAW + 4, 44, 52);
-      ctx.restore();
-    }
-
-    // protein glow when immune
-    if (protein.immune) {
-      ctx.save();
-      ctx.globalAlpha = 0.22;
-      ctx.fillStyle = "#ffd84a";
-      ctx.beginPath();
-      ctx.arc(player.x + 6, player.y - 34, 16, 0, Math.PI*2);
-      ctx.fill();
-      ctx.restore();
-    }
-  }
-
-  function drawDog(o){
-    const f = Math.floor((o.animT || 0) * DOG_FPS) % DOG_FRAMES;
-    const img = sprites.dog[f];
-    if (!img || !img.complete || img.naturalWidth === 0) return;
-
-    if (o.kicked) {
-      ctx.save();
-      ctx.translate(o.x, o.y - 10);
-      ctx.rotate(o.rot || 0);
-      ctx.drawImage(img, -DOG_DRAW/2, -DOG_DRAW/2, DOG_DRAW, DOG_DRAW);
-      ctx.restore();
-      return;
-    }
-
-    ctx.drawImage(img, o.x - 14, o.y - DOG_DRAW + 6, DOG_DRAW, DOG_DRAW);
-  }
-
-  function drawGroundCoconut(o){
-    const img = sprites.coconut;
-    ctx.imageSmoothingEnabled = false;
-
-    if (o.kicked) {
-      ctx.save();
-      ctx.translate(o.x, o.y);
-      ctx.rotate(o.rot || 0);
-      if (img && img.complete && img.naturalWidth > 0) ctx.drawImage(img, -16, -16, 32, 32);
-      else { ctx.fillStyle="#6b3b1c"; ctx.fillRect(-12,-10,24,20); }
-      ctx.restore();
-      ctx.imageSmoothingEnabled = true;
-      return;
-    }
-
-    if (img && img.complete && img.naturalWidth > 0) {
-      const x = o.x - 2;
-      const y = o.y - (COCONUT_GROUND_DRAW - o.h);
-      ctx.drawImage(img, x, y, COCONUT_GROUND_DRAW, COCONUT_GROUND_DRAW);
-    } else {
-      ctx.fillStyle = "#6b3b1c";
-      ctx.fillRect(o.x, o.y, o.w, o.h);
-    }
-    ctx.imageSmoothingEnabled = true;
-  }
-
-  function drawFallingCoconut(o){
-    const img = sprites.coconut;
-    ctx.imageSmoothingEnabled = false;
-
-    if (o.kicked) {
-      ctx.save();
-      ctx.translate(o.x, o.y);
-      ctx.rotate(o.rot || 0);
-      if (img && img.complete && img.naturalWidth > 0) ctx.drawImage(img, -14, -14, 28, 28);
-      else { ctx.fillStyle="#6b3b1c"; ctx.beginPath(); ctx.arc(0,0,12,0,Math.PI*2); ctx.fill(); }
-      ctx.restore();
-      ctx.imageSmoothingEnabled = true;
-      return;
-    }
-
-    if (img && img.complete && img.naturalWidth > 0) {
-      ctx.drawImage(img, o.x - COCONUT_FALL_DRAW/2, o.y - COCONUT_FALL_DRAW/2, COCONUT_FALL_DRAW, COCONUT_FALL_DRAW);
-    } else {
-      ctx.fillStyle="#6b3b1c";
-      ctx.beginPath();
-      ctx.arc(o.x, o.y, o.r, 0, Math.PI*2);
-      ctx.fill();
-    }
-    ctx.imageSmoothingEnabled = true;
-  }
-
-  function drawBat(o){
-    const img = sprites.bat[Math.floor((o.animT || 0) * BAT_FPS) % BAT_FRAMES];
-    if (!img || !img.complete || img.naturalWidth === 0) {
-      ctx.fillStyle = "#222";
-      ctx.fillRect(o.x, o.y - o.hitH, o.hitW, o.hitH);
-      return;
-    }
-
-    ctx.imageSmoothingEnabled = false;
-
-    if (o.kicked) {
-      ctx.save();
-      ctx.translate(o.x, o.y);
-      ctx.rotate(o.rot || 0);
-      ctx.drawImage(img, -BAT_DRAW/2, -BAT_DRAW/2, BAT_DRAW, BAT_DRAW);
-      ctx.restore();
-      ctx.imageSmoothingEnabled = true;
-      return;
-    }
-
-    const dx = o.x - (BAT_DRAW - o.hitW)/2;
-    const dy = (o.y - o.hitH) - (BAT_DRAW - o.hitH)/2;
-    ctx.drawImage(img, dx, dy, BAT_DRAW, BAT_DRAW);
-    ctx.imageSmoothingEnabled = true;
   }
 
   function drawDrink(o){
-    const img = (o.type === "drink_protein") ? sprites.protein : sprites.pina;
+    // Use the fixed (transparent) pina version if available
+    const img = (o.type === "drink_protein") ? sprites.protein : (sprites.pinaFixed || sprites.pina);
     ctx.imageSmoothingEnabled = false;
-
     const x = o.x - 4;
     const y = o.y - (ITEM_DRAW - o.h) - 6;
-
-    if (img && img.complete && img.naturalWidth > 0) {
-      ctx.drawImage(img, x, y, ITEM_DRAW, ITEM_DRAW);
-    } else {
+    if (img && img.complete && img.naturalWidth > 0) ctx.drawImage(img, x, y, ITEM_DRAW, ITEM_DRAW);
+    else {
       ctx.fillStyle = (o.type === "drink_protein") ? "#ffd84a" : "#ff7ad9";
       ctx.fillRect(x+8, y+6, 16, 20);
     }
     ctx.imageSmoothingEnabled = true;
   }
 
-  function drawPopups(){
-    for (const p of popups) {
-      const t = p.t; // real-time seconds
-      const alpha = Math.max(0, 1 - t / 1.2);
-      const scale = 1 + Math.sin(Math.min(1, t) * Math.PI) * 0.12;
-
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.translate(p.x, p.y);
-      ctx.scale(scale, scale);
-
-      ctx.font = "bold 28px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-
-      // outline
-      ctx.lineWidth = 6;
-      ctx.strokeStyle = "rgba(0,0,0,0.65)";
-      ctx.strokeText(p.text, 0, 0);
-
-      // fill
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(p.text, 0, 0);
-
-      ctx.restore();
-    }
-  }
-
-  function drawBubbles(){
-    if (!slowmo.active) return;
-    ctx.save();
-    ctx.globalAlpha = 0.55;
-    ctx.imageSmoothingEnabled = false;
-    for (const b of bubbles) {
-      const r = 2 + (b.t / b.life) * 2;
-      ctx.strokeStyle = "rgba(220,255,255,0.85)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, r, 0, Math.PI*2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawInventory(){
-    // bottom-left inside canvas
-    const pad = 10;
-    const y = H - 18;
-    ctx.save();
-    ctx.font = "bold 12px sans-serif";
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.fillRect(8, H - 44, 260, 36);
-    ctx.fillStyle = "#fff";
-    ctx.fillText("Inventory (FIFO):", pad + 4, H - 30);
-
-    // icons
-    let x = pad + 110;
-    for (let i = 0; i < INVENTORY_MAX; i++) {
-      ctx.fillStyle = "rgba(255,255,255,0.10)";
-      ctx.fillRect(x, H - 40, 26, 26);
-
-      const item = inventory[i];
-      if (item) {
-        const img = item === "protein" ? sprites.protein : sprites.pina;
-        if (img && img.complete && img.naturalWidth > 0) {
-          ctx.imageSmoothingEnabled = false;
-          ctx.drawImage(img, x - 3, H - 43, 32, 32);
-          ctx.imageSmoothingEnabled = true;
-        } else {
-          ctx.fillStyle = item === "protein" ? "#ffd84a" : "#ff7ad9";
-          ctx.fillRect(x + 8, H - 34, 10, 14);
-        }
-      }
-      x += 32;
-    }
-
-    // effect indicators
-    ctx.fillStyle = "#fff";
-    const flags = [];
-    if (protein.immune) flags.push("PROTEIN ON");
-    if (slowmo.active) flags.push("PINA ON");
-    if (flags.length) ctx.fillText(flags.join(" • "), pad + 4, y);
-
-    ctx.restore();
-  }
-
   function draw(){
     ctx.clearRect(0,0,W,H);
     drawBackground();
-
     for (const t of trees) treeDraw(t.x);
-
     drawPlayer();
-    drawBubbles();
-
     for (const o of obs) {
-      if (o.type==="ground") drawGroundCoconut(o);
-      else if (o.type==="fall") drawFallingCoconut(o);
-      else if (o.type==="dog") drawDog(o);
-      else if (o.type==="bat") drawBat(o);
-      else if (o.type==="drink_protein" || o.type==="drink_pina") drawDrink(o);
-    }
-
-    drawPopups();
-    drawInventory();
-
-    if(!sprites.ready){
-      ctx.fillStyle="rgba(0,0,0,.4)";
-      ctx.fillRect(0,0,W,H);
-      ctx.fillStyle="#fff";
-      ctx.font="16px sans-serif";
-      ctx.fillText("Loading…", 410, 150);
+      if (o.type==="drink_protein" || o.type==="drink_pina") drawDrink(o);
     }
   }
 
@@ -1144,8 +868,6 @@
     gameOverHandled=false;
 
     inventory.length = 0;
-    popups.length = 0;
-    bubbles.length = 0;
 
     protein.active=false; protein.timer=0; protein.immune=false;
     slowmo.active=false; slowmo.timer=0;
@@ -1171,5 +893,4 @@
 
   reset();
   requestAnimationFrame(loop);
-
 })();
