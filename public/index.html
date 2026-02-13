@@ -5,30 +5,17 @@
 <title>Jared Vs. Coconut</title>
 <style>
   html,body{margin:0;background:#0b1320;color:#fff;font-family:sans-serif}
-  .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:10px;position:relative}
+  .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:10px}
   canvas{border:2px solid rgba(255,255,255,.2);border-radius:8px}
 
   .title{
-    position:fixed;
-    top:10px;
-    left:50%;
-    transform:translateX(-50%);
-    margin:0;
-    font-size:24px;
-    letter-spacing:0.5px;
-    text-shadow:0 2px 0 rgba(0,0,0,.35);
-    z-index:10;
+    position:fixed;top:10px;left:50%;transform:translateX(-50%);
+    margin:0;font-size:24px;letter-spacing:.5px;
+    text-shadow:0 2px 0 rgba(0,0,0,.35);z-index:10;
   }
-
   .hud{width:900px;display:flex;justify-content:space-between}
 
-  .footer{
-    width:900px;
-    display:flex;
-    flex-direction:column;
-    gap:10px;
-    align-items:center;
-  }
+  .footer{width:900px;display:flex;flex-direction:column;gap:10px;align-items:center}
 
   #leaderboard{
     width:100%;
@@ -38,59 +25,20 @@
     background:rgba(255,255,255,.04);
     font-size:14px;
   }
-  #leaderboard h3{
-    margin:0 0 6px 0;
-    font-size:14px;
-    font-weight:700;
-    opacity:.95;
-  }
-  #leaderboard ol{
-    margin:0;
-    padding-left:22px;
-    display:flex;
-    flex-direction:column;
-    gap:6px;
-  }
-  #leaderboard li{
-    display:flex;
-    justify-content:space-between;
-    align-items:baseline;
-    gap:12px;
-  }
+  #leaderboard h3{margin:0 0 6px 0;font-size:14px;font-weight:700;opacity:.95}
+  #leaderboard ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+  #leaderboard li{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
   .lb-left{display:flex;flex-direction:column;gap:2px;min-width:0}
-  .lb-name{
-    font-weight:700;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    max-width:520px;
-  }
-  .lb-meta{
-    opacity:.85;
-    font-size:12px;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    max-width:520px;
-  }
-  .lb-score{
-    font-variant-numeric: tabular-nums;
-    opacity:.95;
-    white-space:nowrap;
-  }
+  .lb-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px}
+  .lb-meta{opacity:.85;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px}
+  .lb-score{font-variant-numeric: tabular-nums;opacity:.95;white-space:nowrap}
 
-  /* ---------- In-game name entry overlay ---------- */
+  /* Overlay name entry */
   .overlay{
-    position:fixed;
-    inset:0;
-    display:none;
-    align-items:center;
-    justify-content:center;
-    background:rgba(0,0,0,.55);
-    z-index:50;
+    position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.55);z-index:50;
   }
   .overlay.show{display:flex}
-
   .panel{
     width:min(520px, 92vw);
     border:1px solid rgba(255,255,255,.16);
@@ -99,50 +47,19 @@
     box-shadow:0 12px 40px rgba(0,0,0,.45);
     padding:16px 16px 14px;
   }
-  .panel h2{
-    margin:0 0 6px 0;
-    font-size:18px;
-  }
-  .panel .sub{
-    opacity:.85;
-    margin:0 0 12px 0;
-    font-size:13px;
-    line-height:1.35;
-  }
-  .row{
-    display:flex;
-    gap:10px;
-    align-items:center;
-  }
+  .panel h2{margin:0 0 6px 0;font-size:18px}
+  .panel .sub{opacity:.85;margin:0 0 12px 0;font-size:13px;line-height:1.35}
+  .row{display:flex;gap:10px;align-items:center}
   .row input{
-    flex:1;
-    padding:10px 10px;
-    border-radius:10px;
-    border:1px solid rgba(255,255,255,.18);
-    background:rgba(255,255,255,.06);
-    color:#fff;
-    outline:none;
-    font-size:14px;
+    flex:1;padding:10px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.06);color:#fff;outline:none;font-size:14px;
   }
   .row button{
-    padding:10px 12px;
-    border-radius:10px;
-    border:1px solid rgba(255,255,255,.18);
-    background:rgba(255,255,255,.10);
-    color:#fff;
-    cursor:pointer;
-    font-size:14px;
-    white-space:nowrap;
+    padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.18);
+    background:rgba(255,255,255,.10);color:#fff;cursor:pointer;font-size:14px;white-space:nowrap;
   }
-  .row button.primary{
-    background:rgba(106,212,255,.18);
-    border-color:rgba(106,212,255,.35);
-  }
-  .panel .hint{
-    margin-top:10px;
-    opacity:.75;
-    font-size:12px;
-  }
+  .row button.primary{background:rgba(106,212,255,.18);border-color:rgba(106,212,255,.35)}
+  .panel .hint{margin-top:10px;opacity:.75;font-size:12px}
 
   @media (max-width: 940px){
     .hud,.footer,#leaderboard{width:min(900px, 94vw)}
@@ -167,12 +84,11 @@
   <canvas id="c" width="900" height="300"></canvas>
 
   <div class="footer">
-    <div>Jump: Space / ↑ / click • Slide: ↓ / right-click (max 3s) • R = restart</div>
+    <div>Jump: Space / ↑ / click • Slide: ↓ / right-click (max 3s) • Use: ← • Throw: → • R = restart</div>
     <div id="leaderboard"></div>
   </div>
 </div>
 
-<!-- Overlay: name entry -->
 <div id="nameOverlay" class="overlay" aria-hidden="true">
   <div class="panel">
     <h2>New High Score!</h2>
@@ -182,7 +98,7 @@
       <button id="submitNameBtn" class="primary">Submit</button>
       <button id="skipNameBtn">Skip</button>
     </div>
-    <div class="hint">Tip: Press Enter to submit. Blank name becomes “Unknown”.</div>
+    <div class="hint">Press Enter to submit. Blank becomes “Unknown”. Esc/Skip to ignore.</div>
   </div>
 </div>
 
